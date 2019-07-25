@@ -73,7 +73,7 @@ tf.app.flags.DEFINE_list('crop_size',
                          'Image crop size [height, width]')
 
 tf.app.flags.DEFINE_string('model_variant',
-                           'mobilenet_v2',
+                           'resnet_v1_50',
                            'model variant.')
 
 

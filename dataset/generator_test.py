@@ -9,9 +9,10 @@
 
 # lib
 import tensorflow as tf
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import collections
 import sys
-import os
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -43,6 +44,10 @@ def main(argv):
 
     sess = tf.Session()
 
+    print('=' * 10 + 'samples content' + '=' * 10)
+    for key, val in samples.items():
+        print('samples[{}]: {}'.format(key, val.shape))
+    print('=' * 35)
     res = sess.run(samples)
     print(res.keys())
 
@@ -66,9 +71,6 @@ def main(argv):
         plt.imshow(label, cmap='gray')
     plt.show()
 
-
-
-    print(frame.shape)
     print(ann.shape)
 
 
