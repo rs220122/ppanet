@@ -212,7 +212,7 @@ def _crop(image, offset_height, offset_width, crop_height, crop_width):
         ['Crop size greater than the image size.']
     )
 
-    offsets = tf.to_int32(tf.stack([offset_height, offset_width, 0]))
+    offsets = tf.cast(tf.stack([offset_height, offset_width, 0]), tf.int32)
 
     # Use tf.slice instead of crop_to_bounding_box asa it accepts tensors to
     # define the crop size.
