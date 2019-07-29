@@ -76,6 +76,10 @@ tf.app.flags.DEFINE_string('model_variant',
                            'resnet_v1_50',
                            'model variant.')
 
+tf.app.flags.DEFINE_boolean('debug_mode',
+                            False,
+                            'debug mode or not')
+
 
 _DATASETS_INFORMATION = {
     'cityscapes': {},
@@ -176,8 +180,9 @@ class Dataset(object):
 
         parsed_features = tf.parse_single_example(example_proto, features)
 
-        for key in parsed_features:
-            print('{}: {}'.format(key, parsed_features[key]))
+        if FLAGS.debug_mode:
+            for key in parsed_features:
+                print('{}: {}'.format(key, parsed_features[key]))
 
         # decode image and label.
         image = tf.image.decode_png(parsed_features['image/encoded'], 3)
