@@ -14,6 +14,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import collections
 import sys
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 import numpy as np
 
 # user packages
@@ -57,18 +58,30 @@ def main(argv):
     print('image.shape => ', image.shape)
     print('ann.shape   => ', ann.shape)
 
-    plt.figure(figsize=(20, 10))
+    figure = plt.figure(figsize=(20, 10))
     num_imgs = 2
+    gridspec_master = GridSpec(nrows=num_imgs, ncols=2)
+
     for i in range(num_imgs):
-        plt.suptitle(res['image_name'][i])
-        plt.subplot(num_imgs, 2, (i*2)+1)
-        plt.title('target')
-        plt.imshow(image[i].astype(np.uint8))
-        plt.subplot(num_imgs, 2, (i*2)+2)
-        plt.title('label')
+        grid_sub_1 = GridSpecFromSubplotSpec(nrows=1,
+                                             ncols=1,
+                                             subplot_spec=gridspec_master[i, 0])
+        axes_1 = figure.add_subplot(grid_sub_1[:, :])
+        axes_1.set_xticks([])
+        axes_1.set_yticks([])
+        axes_1.imshow(image[i].astype(np.uint8))
+        axes_1.set_title('target')
+
+        grid_sub_2 = GridSpecFromSubplotSpec(nrows=1,
+                                             ncols=1,
+                                             subplot_spec=gridspec_master[i, 1])
+        axes_2 = figure.add_subplot(grid_sub_2[:, :])
+        axes_2.set_xticks([])
+        axes_2.set_yticks([])
         label = np.squeeze(ann[i], axis=2)
         label[label == 255] = np.max(label[label != 255]) +1
-        plt.imshow(label, cmap='gray')
+        axes_2.imshow(label, cmap='gray')
+        axes_2.set_title('label')
     plt.show()
 
     print(ann.shape)
