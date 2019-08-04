@@ -40,7 +40,7 @@ def build_model(images,
     if backbone_atrous_rate is not None:
         if 'beta' not in model_variant:
             raise ValueError('{} is not correct.'.format(model_variant))
-
+    _, images_height, images_width, _ = images.get_shape().as_list()
     features, end_points = feature_extractor.extract_features(
                            images=images,
                            output_stride=output_stride,
@@ -76,15 +76,25 @@ def build_model(images,
         with slim.arg_scope(
                 [slim.conv2d],
                 weights_regularizer=slim.l2_regularizer(weight_decay),
+                weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                 activation_fn=tf.nn.relu,
                 normalizer_fn=slim.batch_norm,
                 padding='SAME',
                 stride=1):
             with slim.arg_scope([slim.batch_norm], **batch_norm_params):
-                for rate in ppm_rates:
-                    kernel_height = int(base_height / rate)
-                    kernel_width  = int(base_width  / rate)
-                    pool_feature = slim.avg_pool2d(features, [kernel_height, kernel_width], stride=[kernel_height, kernel_width])
+                with tf.variable_scope('ppm', [features]):
+                    for rate in ppm_rates:
+                        kernel_height = int(base_height / rate)
+                        kernel_width  = int(base_width  / rate)
+                        pool_feature = slim.avg_pool2d(features, [kernel_height, kernel_width], stride=[kernel_height, kernel_width])
+                        pool_feature = slim.conv2d(pool_feature, 256, 1, scope='kernel_{}'.format(rate))
+                        print('============= rate {} ==============='.format(rate))
+                        print('pool_feature.shape: {}'.format(pool_feature.get_shape().as_list()))
+                        resized_feature = tf.image.resize_bilinear(pool_feature, [base_height, base_width], align_corners=True)
+                        print('resized_feature.shape: {}'.format(resized_feature.get_shape().as_list()))
+                        features_list.append(resized_feature)
+                    ppm_feature = tf.concat(features_list, axis=3)
+                ppm_feature = slim.conv2d(ppm_feature, 1024, 3)
+                ppm_feature = slim.conv2d(ppm_feature, num_classes, 3)
 
-                    pool_feature = slim.conv2d()
-    return features, end_points
+    return tf.image.resize_bilinear(ppm_feature, [images_height, images_width], align_corners=True)
