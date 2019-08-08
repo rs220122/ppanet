@@ -94,7 +94,7 @@ def build_model(images,
                         print('resized_feature.shape: {}'.format(resized_feature.get_shape().as_list()))
                         features_list.append(resized_feature)
                     ppm_feature = tf.concat(features_list, axis=3)
-                ppm_feature = slim.conv2d(ppm_feature, 1024, 3)
+                ppm_feature = slim.conv2d(ppm_feature, 256, 3)
                 ppm_feature = slim.conv2d(ppm_feature, num_classes, 3)
 
     return tf.image.resize_bilinear(ppm_feature, [images_height, images_width], align_corners=True)
