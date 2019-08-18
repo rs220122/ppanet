@@ -160,8 +160,8 @@ def log_summaries(input, labels, num_classes, logits):
         tf.summary.image('samples/image', input)
 
         pixel_scaling = max(1, 255 // num_classes)
-        summary_label = tf.cast(labels * pixel_scaling, tf.uint8)
-        tf.summary.image('samples/label', labels)
+        summary_labels = tf.cast(labels * pixel_scaling, tf.uint8)
+        tf.summary.image('samples/label', summary_labels)
 
         predictions = tf.expand_dims(tf.argmax(logits, 3) -1)
         summary_predictions = tf.cast(predictions * pixel_scaling, tf.uint8)
@@ -194,7 +194,7 @@ def get_model_init_fn(train_logdir,
 
     variables_to_restore = tf.contrib.framework.get_variables_to_restore(exclude=['global_step'])
 
-    if variabes_to_restore:
+    if variables_to_restore:
         init_op, init_feed_dict = tf.contrib.framework.assign_from_checkpoint(
             tf_initial_checkpoint,
             variables_to_restore,
@@ -287,34 +287,34 @@ def main(argv):
 
             losses = tf.losses.get_losses(scope=scope)
 
-            print_ops = []
+            print_losses = []
             for loss in losses:
                 tf.summary.scalar('Losses:%s' % loss.op.name, loss)
-                print_ops.append(tf.cond(
-                    should_log,
-                    lambda: tf.print('raw loss is:',
-                                     loss,
-                                     output_stream=sys.stdout),
-                    lambda: False))
-
-                # print_losses.append(tf.cond(
+                # print_ops.append(tf.cond(
                 #     should_log,
-                #     lambda: tf.print(loss, [loss], 'raw loss is:'),
-                #     lambda: loss))
+                #     lambda: tf.print('raw loss is:',
+                #                      loss,
+                #                      output_stream=sys.stdout),
+                #     lambda: False))
+
+                print_losses.append(tf.cond(
+                    should_log,
+                    lambda: tf.Print(loss, [loss], 'raw loss is:'),
+                    lambda: loss))
 
             regularization_loss = tf.losses.get_regularization_loss(scope=scope)
             tf.summary.scalar('Losses/%s' % regularization_loss.op.name,
                               regularization_loss)
-            print_ops.append(tf.cond(
-                should_log,
-                lambda: tf.print('regularization loss is:',
-                                 regularization_loss,
-                                 output_stream=sys.stdout),
-                lambda: False))
-            # regularization_loss = tf.cond(
+            # print_ops.append(tf.cond(
             #     should_log,
-            #     lambda: tf.print(regularization_loss, [regularization_loss], 'regularization loss is:'),
-            #     lambda: regularization_loss)
+            #     lambda: tf.print('regularization loss is:',
+            #                      regularization_loss,
+            #                      output_stream=sys.stdout),
+            #     lambda: False))
+            regularization_loss = tf.cond(
+                should_log,
+                lambda: tf.Print(regularization_loss, [regularization_loss], 'regularization loss is:'),
+                lambda: regularization_loss)
 
             total_loss = tf.add_n([tf.add_n(losses), regularization_loss])
             tf.summary.scalar('Losses/total_loss', total_loss)
@@ -332,21 +332,23 @@ def main(argv):
 
             # Print total loss to the terminal.
             # This implementation is mirrored from tf.slim.summaries.
-            # total_loss = tf.cond(
-            #     should_log,
-            #     lambda: tf.print(total_loss, [total_loss, losses, regularization_loss], 'Total loss is:'),
-            #     lambda: total_loss)
-            print_ops.append(tf.cond(
+            total_loss = tf.cond(
                 should_log,
-                lambda: tf.print('total loss is:',
-                                 total_loss,
-                                 output_stream=sys.stdout),
-                lambda: False))
+                lambda: tf.Print(total_loss, [total_loss], 'Total loss is:'),
+                lambda: total_loss)
+            # print_ops.append(tf.cond(
+            #     should_log,
+            #     lambda: tf.print('total loss is:',
+            #                      total_loss,
+            #                      output_stream=sys.stdout),
+            #     lambda: False))
+            global_step = tf.cond(
+                should_log,
+                lambda: tf.Print(global_step, [global_step], 'global_step is:'),
+                lambda: global_step)
 
-            with tf.control_dependencies([update_op]):
-                print_op = tf.group(*print_ops)
-                train_tensor = tf.identity(print_op, name='train_op')
-                # train_tensor = tf.identity(total_loss, name='train_op')
+            with tf.control_dependencies([update_op] + [global_step] + print_losses + [regularization_loss]):
+                train_tensor = tf.identity(total_loss, name='train_op')
 
         summary_op = tf.summary.merge_all(scope='clone')
 
@@ -370,14 +372,15 @@ def main(argv):
         with tf.train.MonitoredTrainingSession(
             checkpoint_dir=FLAGS.train_logdir,
             hooks=[stop_hook],
-            config=session_config,
+            # config=session_config,
             scaffold=scaffold,
             summary_dir=FLAGS.train_logdir,
             log_step_count_steps=FLAGS.log_steps,
             save_summaries_secs=FLAGS.save_summaries_secs,
             save_checkpoint_secs=FLAGS.save_interval_secs
         ) as sess:
-            sess.run(train_tensor)
+            while not sess.should_stop():
+                sess.run([train_tensor])
 
 
 
