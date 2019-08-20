@@ -25,7 +25,7 @@ FLAGS = tf.app.flags.FLAGS
 
 # DEFINE FLAGS
 tf.app.flags.DEFINE_float('base_learning_rate',
-                          0.0001,
+                          0.01,
                           'Initial learning rate.')
 
 tf.app.flags.DEFINE_float('weight_decay',
@@ -40,12 +40,9 @@ tf.app.flags.DEFINE_boolean('fine_tune_batch_norm',
                             True,
                             'Whether finetuning batch normalization value.')
 
-tf.app.flags.DEFINE_integer('decay_steps',
-                            100,
-                            'The decay step for weight decay.')
 
 tf.app.flags.DEFINE_float('momentum',
-                          0.01,
+                          0.9,
                           'Momentum.')
 
 # Defaults to None. Set [1, 2, 4] when using provided
@@ -89,7 +86,7 @@ tf.app.flags.DEFINE_integer('save_interval_secs',
                             'How often, in seconds, we save the model to disk.')
 
 tf.app.flags.DEFINE_integer('save_summaries_secs',
-                            600,
+                            200,
                             'How often, in seconds, we compute the summaries.')
 
 # tf.app.flags.DEFINE_string('dataset_dir',
@@ -163,7 +160,10 @@ def log_summaries(input, labels, num_classes, logits):
         summary_labels = tf.cast(labels * pixel_scaling, tf.uint8)
         tf.summary.image('samples/label', summary_labels)
 
-        predictions = tf.expand_dims(tf.argmax(logits, 3) -1)
+        logits = tf.argmax(logits, 3)
+        print('logits.shape: {}'.format(logits.get_shape().as_list()))
+        predictions = tf.expand_dims(logits, axis=3)
+        print('predictions.shape: {}'.format(predictions.get_shape().as_list()))
         summary_predictions = tf.cast(predictions * pixel_scaling, tf.uint8)
         tf.summary.image('sample/logits', summary_predictions)
 
@@ -244,7 +244,7 @@ def main(argv):
         learning_rate = tf.train.polynomial_decay(
                             learning_rate=FLAGS.base_learning_rate,
                             global_step=global_step,
-                            decay_steps=FLAGS.decay_steps,
+                            decay_steps=FLAGS.train_steps,
                             end_learning_rate=0,
                             power=0.9)
         tf.summary.scalar('learning_rate', learning_rate)
@@ -279,7 +279,7 @@ def main(argv):
                     dataset.ignore_label,
                     loss_weight=1.0,
                 )
-
+                logits = tf.identity(logits, name='dense_prediction')
                 log_summaries(input, labels, dataset.num_classes, logits)
 
             # should_log

@@ -6,8 +6,9 @@
 # Description:
 #
 # ===============================================
-
-python train.py --output_stride=8 \
+TRAIN_LOGDIR='ppm_out_stride8'
+mkdir ${TRAIN_LOGDIR}
+nohup python train.py --output_stride=8 \
                 --ppm_rates=1 \
                 --ppm_rates=2 \
                 --ppm_rates=3 \
@@ -20,4 +21,8 @@ python train.py --output_stride=8 \
                 --save_summaries_images \
                 --backbone_atrous_rate=1 \
                 --backbone_atrous_rate=2 \
-                --backbone_atrous_rate=4 
+                --backbone_atrous_rate=4 \
+                --base_learning_rate=0.01 \
+                --weight_decay=0.0001 \
+                --train_logdir=${TRAIN_LOGDIR} \
+                --train_steps=100000 > ${TRAIN_LOGDIR}'/out.log'  &
