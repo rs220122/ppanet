@@ -108,12 +108,13 @@ def build_model(images,
 
             if decoder_output_stride is not None:
                 with tf.variable_scope('decoder', [features]):
-                    feature_name = feature_extractor.networks_to_feature_maps[model_variant][DECODER_END_POINTS][decoder_output_stride]
-
-                    features_from_backbone = end_points[feature_name]
-                    _, decoder_height, decoder_width, _ = features_from_backbone.get_shape().as_list()
-                    decoder_features_list = [tf.image.resize_bilinear(features, [decoder_height, decoder_width], align_corners=True)]
-                    decoder_features_list.append(slim.conv2d(endpoints[feature_name, 48, 1]))
+                    feature_names = feature_extractor.networks_to_feature_maps[model_variant][DECODER_END_POINTS][decoder_output_stride]
+                    for feature_name in feature_names:
+                        feature_name = feature_extractor.name_scope[model_variant] + '/' + feature_name
+                        features_from_backbone = end_points[feature_name]
+                        _, decoder_height, decoder_width, _ = features_from_backbone.get_shape().as_list()
+                        decoder_features_list = [tf.image.resize_bilinear(features, [decoder_height, decoder_width], align_corners=True)]
+                        decoder_features_list.append(slim.conv2d(features_from_backbone, 48, 1))
 
                     features = tf.concat(decoder_features_list, axis=3)
 
