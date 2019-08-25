@@ -97,4 +97,4 @@ def build_model(images,
                 ppm_feature = slim.conv2d(ppm_feature, 256, 3)
                 ppm_feature = slim.conv2d(ppm_feature, num_classes, 3)
 
-    return tf.image.resize_bilinear(ppm_feature, [images_height, images_width], align_corners=True)
+    return ppm_feature

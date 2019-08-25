@@ -110,7 +110,7 @@ def print_args():
     print('-' * 40 + '\n')
 
 
-def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, loss_weight=1.0):
+def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, loss_weight=1.0, resize_logits=True):
     """ """
     if labels is None:
         raise ValueError('No label for softmax cross entropy.')
@@ -118,9 +118,12 @@ def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, lo
     _, labels_height, labels_width, _ = labels.get_shape().as_list()
     _, logits_height, logits_width, _ = logits.get_shape().as_list()
     if logits_height != labels_height or logits_width != labels_width:
-        raise ValueError('logits shape is not equal to labels. ' +
-                         'logits.shape => {}, labels.shape=> {}'.format((logits_height, logits_width),
-                                                                        (labels_height, labels_width)))
+        if resize_logits:
+            logits = tf.image.resize_bilinear(logits, [labels_height, labels_width], align_corners=True)
+        else:
+            raise ValueError('logits shape is not equal to labels. ' +
+                             'logits.shape => {}, labels.shape=> {}'.format((logits_height, logits_width),
+                                                                            (labels_height, labels_width)))
 
     labels = tf.reshape(labels, shape=[-1])
     not_ignore_mask = tf.cast(tf.not_equal(labels, ignore_label), dtype=tf.float32) * loss_weight
