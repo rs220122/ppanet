@@ -34,7 +34,12 @@ tf.app.flags.DEFINE_float('weight_decay',
 
 tf.app.flags.DEFINE_integer('output_stride',
                             16,
-                            'The output stride.')
+                            'The output stride')
+
+tf.app.flags.DEFINE_integer('decoder_output_stride',
+                            None,
+                            'The decoder stride. Bring the feature map from backbone.' +
+                            'If this value is 4, bring the feature map from where backbone stride is 4.')
 
 tf.app.flags.DEFINE_boolean('fine_tune_batch_norm',
                             True,
@@ -61,7 +66,8 @@ tf.app.flags.DEFINE_string('tf_initial_checkpoint',
                            'The initial checkpoint for backbone network.')
 
 tf.app.flags.DEFINE_multi_integer('ppm_rates',
-                                  [1, 2, 3, 6],
+                                  # [1, 2, 3, 6],
+                                  None,
                                   'Pramid Pooling Module each rate.')
 
 tf.app.flags.DEFINE_enum('ppm_pooling_type',
@@ -272,7 +278,8 @@ def main(argv):
                                            fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
                                            is_training=True,
                                            ppm_rates=FLAGS.ppm_rates,
-                                           ppm_pooling_type=FLAGS.ppm_pooling_type)
+                                           ppm_pooling_type=FLAGS.ppm_pooling_type,
+                                           decoder_output_stride=FLAGS.decoder_output_stride)
                 print('logits.shape: {}'.format(logits.get_shape()))
 
                 add_softmax_cross_entropy_loss(
