@@ -13,13 +13,13 @@
 # packages
 import tensorflow as tf
 import os
-import numpy as np
 import sys
 from tensorflow.python import math_ops
 
 # user packages
 from dataset import generator
 from lib.models import model
+from lib.utils import common
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -32,29 +32,13 @@ tf.app.flags.DEFINE_float('weight_decay',
                           0.00004,
                           'The rate of the weight decay for training.')
 
-tf.app.flags.DEFINE_integer('output_stride',
-                            16,
-                            'The output stride')
-
-tf.app.flags.DEFINE_integer('decoder_output_stride',
-                            None,
-                            'The decoder stride. Bring the feature map from backbone.' +
-                            'If this value is 4, bring the feature map from where backbone stride is 4.')
-
 tf.app.flags.DEFINE_boolean('fine_tune_batch_norm',
                             True,
                             'Whether finetuning batch normalization value.')
 
-
 tf.app.flags.DEFINE_float('momentum',
                           0.9,
                           'Momentum.')
-
-# Defaults to None. Set [1, 2, 4] when using provided
-# 'restnet_v1_{50, 101}_beta' checkpoints.
-tf.app.flags.DEFINE_multi_integer('backbone_atrous_rate',
-                                  None,
-                                  'Employ a hierarchy atrous rate for resnet.')
 
 tf.app.flags.DEFINE_string('train_logdir',
                            './train_logdir',
@@ -64,16 +48,6 @@ tf.app.flags.DEFINE_string('train_logdir',
 tf.app.flags.DEFINE_string('tf_initial_checkpoint',
                            None,
                            'The initial checkpoint for backbone network.')
-
-tf.app.flags.DEFINE_multi_integer('ppm_rates',
-                                  # [1, 2, 3, 6],
-                                  None,
-                                  'Pramid Pooling Module each rate.')
-
-tf.app.flags.DEFINE_enum('ppm_pooling_type',
-                         'average',
-                         ['max', 'average'],
-                         'Pramid Pooling Module Pooling type.')
 
 tf.app.flags.DEFINE_boolean('save_summaries_images',
                             False,
@@ -95,25 +69,15 @@ tf.app.flags.DEFINE_integer('save_summaries_secs',
                             200,
                             'How often, in seconds, we compute the summaries.')
 
-# tf.app.flags.DEFINE_string('dataset_dir',
-#                            os.path.join('dataset', 'CamVid', 'tfrecord'),
-#                            'tfrecord directory')
+tf.app.flags.DEFINE_integer('batch_size',
+                            8,
+                            'batch size')
+
+tf.app.flags.DEFINE_list('crop_size',
+                         '513, 513',
+                         'Image crop size [height, width]')
 
 
-def print_args():
-    """ Print arguments. """
-    print('-' * 40)
-    print('flags information')
-    print('-' * 40)
-    keys = FLAGS.__flags.keys()
-    max_string_len = np.max([len(key) for key in keys])
-    string_format = '{:%d} : {}' % max_string_len
-    for key in keys:
-        if key in ['h', 'help', 'helpfull', 'helpshort']:
-            pass
-        else:
-            print(string_format.format(key, FLAGS[key].value))
-    print('-' * 40 + '\n')
 
 
 def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, loss_weight=1.0, resize_logits=True):
@@ -220,7 +184,7 @@ def get_model_init_fn(train_logdir,
 
 def main(argv):
 
-    print_args()
+    common.print_args()
 
     print('Training on %s %s set' % (FLAGS.split_name, FLAGS.dataset_name))
 
@@ -265,8 +229,8 @@ def main(argv):
         with tf.name_scope('clone') as scope:
             with tf.variable_scope(tf.get_variable_scope(), reuse=False):
                 samples = iterator.get_next()
-                input = tf.identity(samples['image'], name='Input_Image')
-                labels = tf.identity(samples['label'], name='Semantic_Label')
+                input = tf.identity(samples[common.IMAGE], name='Input_Image')
+                labels = tf.identity(samples[common.LABEL], name='Semantic_Label')
 
                 is_training=True
                 logits = model.build_model(images=input,
@@ -274,12 +238,13 @@ def main(argv):
                                            model_variant=FLAGS.model_variant,
                                            output_stride=FLAGS.output_stride,
                                            weight_decay=FLAGS.weight_decay,
-                                           backbone_atrous_rate=FLAGS.backbone_atrous_rate,
+                                           backbone_atrous_rates=FLAGS.backbone_atrous_rates,
                                            fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
                                            is_training=True,
                                            ppm_rates=FLAGS.ppm_rates,
                                            ppm_pooling_type=FLAGS.ppm_pooling_type,
-                                           decoder_output_stride=FLAGS.decoder_output_stride)
+                                           decoder_output_stride=FLAGS.decoder_output_stride,
+                                           atrous_rates=FLAGS.atrous_rates)
                 print('logits.shape: {}'.format(logits.get_shape()))
 
                 add_softmax_cross_entropy_loss(

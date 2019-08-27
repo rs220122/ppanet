@@ -23,6 +23,7 @@ sys.path.append(add_path)
 
 # user packages
 from lib.utils import input_preprocess
+from lib.utils import common
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -63,14 +64,6 @@ tf.app.flags.DEFINE_integer('max_resize_value',
 tf.app.flags.DEFINE_integer('resize_factor',
                             None,
                             'Resized dimensions are multiple of factor plus one.')
-
-tf.app.flags.DEFINE_integer('batch_size',
-                            8,
-                            'batch size')
-
-tf.app.flags.DEFINE_list('crop_size',
-                         '513, 513',
-                         'Image crop size [height, width]')
 
 tf.app.flags.DEFINE_string('model_variant',
                            'resnet_v1_50',
@@ -193,10 +186,10 @@ class Dataset(object):
             image_name = tf.constant('')
 
         sample = {
-            'image'     : image,
-            'image_name': image_name,
-            'height'    : parsed_features['image/height'],
-            'width'     : parsed_features['image/width']
+            common.IMAGE          : image,
+            common.IMAGE_FILENAME : image_name,
+            common.IMAGE_HEIGHT   : parsed_features['image/height'],
+            common.IMAGE_WIDTH    : parsed_features['image/width']
         }
         # make sure label size
         if label is not None:
@@ -208,7 +201,7 @@ class Dataset(object):
                 raise ValueError('Input label shape must be [height, width], or [height, width, 1].')
 
         label.set_shape([None, None, 1])
-        sample['label'] = label
+        sample[common.LABEL] = label
 
         return sample
 
@@ -225,8 +218,8 @@ class Dataset(object):
         Raises:
             valueError: Ground truth label not provided during training.
         """
-        image = sample['image']
-        label = sample['label']
+        image = sample[common.IMAGE]
+        label = sample[common.LABEL]
 
         original_image, image, label = input_preprocess.preprocess_image_and_label(
             image=image,
@@ -244,14 +237,14 @@ class Dataset(object):
             model_variant=self.model_variant
         )
 
-        sample['image'] = image
+        sample[common.IMAGE] = image
 
         if not self.is_training:
             # Original image is only used during visualization.
             sample['original_image'] = original_image
 
         if label is not None:
-            sample['label'] = label
+            sample[common.LABEL] = label
 
         return sample
 
