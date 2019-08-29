@@ -59,6 +59,7 @@ LABEL = 'label'
 IMAGE_FILENAME = 'image_filename'
 IMAGE_HEIGHT = 'height'
 IMAGE_WIDTH = 'width'
+ORIGINAL_IMAGE = 'original'
 
 
 

@@ -241,7 +241,7 @@ class Dataset(object):
 
         if not self.is_training:
             # Original image is only used during visualization.
-            sample['original_image'] = original_image
+            sample[common.ORIGINAL_IMAGE] = original_image
 
         if label is not None:
             sample[common.LABEL] = label
