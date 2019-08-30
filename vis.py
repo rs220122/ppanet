@@ -33,14 +33,6 @@ tf.app.flags.DEFINE_string('checkpoint_dir',
 
 # Settings for visualizing the model.
 
-tf.app.flags.DEFINE_integer('vis_batch_size',
-                            1,
-                            'The number of images in each batch during evaluation.')
-
-tf.app.flags.DEFINE_list('vis_crop_size',
-                         '512, 512',
-                         'Crop size ')
-
 tf.app.flags.DEFINE_integer('eval_interval_secs',
                             200,
                             'How often to run evaluation.')
@@ -82,6 +74,28 @@ def create_cityscapes_label_colormap():
     return colormap
 
 
+def create_camvid_label_colormap():
+    """Creates a label colormap used in CamVid dataset."""
+    colormap = np.zeros((12, 3), dtype=np.uint8)
+    colormap[0] = [128, 128, 128] # sky
+    colormap[1] = [128, 0, 0]     # building
+    colormap[2] = [192, 192, 128] # column_pole
+    colormap[3] = [128, 64, 128]  # road
+    colormap[4] = [0, 0, 192]     # sidewalk
+    colormap[5] = [128, 128, 0]   # Tree
+    colormap[6] = [192, 128, 128] # SignSymbol
+    colormap[7] = [64, 64, 128]   # Fence
+    colormap[8] = [64, 0, 128]    # Car
+    colormap[9] = [64, 64, 0]     # Pedestrian
+    colormap[10] = [0, 128, 128]  # Bicyclist
+    colormap[11] = [0, 0, 0]      # Void
+
+    class_vs_colormap = {0: 'sky', 1: 'building', 2: 'column_pole', 3: 'road',
+                         4: 'sidewalk', 5: 'tree', 6: 'sign', 7: 'fence', 8: 'car',
+                         9: 'pedestrian', 10: 'byciclist', 11: 'road'}
+
+    return colormap, class_vs_colormap
+
 
 def label_to_color_image(label, colormap_type):
     """
@@ -89,7 +103,12 @@ def label_to_color_image(label, colormap_type):
     if label.ndim != 2:
         raise ValueError('Expect 2-D input label. Got {}.'.format(label.shape))
 
-    colormap = create_cityscapes_label_colormap()
+    if colormap_type == 'camvid':
+        colormap, _ = create_camvid_label_colormap()
+    elif colormap_type =='cityscapes':
+        colormap = create_cityscapes_label_colormap()
+    else:
+        raise ValueError('colormap_type {} is not defined'.format(colormap_type))
     return colormap[label]
 
 
@@ -146,13 +165,14 @@ def _process_batch(sess, original_images, semantic_predictions, image_names,
         # Save image.
         save_annotation(original_image,
                         save_dir,
-                        filename='{:6d}_image'.format(image_id_offset+i),
+                        filename='{:06}_image'.format(image_id_offset+i),
                         add_colormap=False)
 
         save_annotation(crop_semantic_prediction,
                         save_dir,
-                        filename='{:6d}_pred'.format(image_id_offset+i),
-                        add_colormap=True)
+                        filename='{:06}_pred'.format(image_id_offset+i),
+                        add_colormap=True,
+                        colormap_type=FLAGS.dataset_name)
 
 
 
@@ -164,8 +184,8 @@ def main(argv):
                 dataset_dir=FLAGS.dataset_dir,
                 dataset_name=FLAGS.dataset_name,
                 split_name=FLAGS.split_name,
-                batch_size=FLAGS.vis_batch_size,
-                crop_size=[int(val) for val in FLAGS.vis_crop_size],
+                batch_size=FLAGS.batch_size,
+                crop_size=[int(val) for val in FLAGS.crop_size],
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
                 resize_factor=FLAGS.resize_factor,
@@ -234,7 +254,7 @@ def main(argv):
                                    image_id_offset=image_id_offset,
                                    save_dir=save_dir,
                                    raw_save_dir=raw_save_dir)
-                    image_id_offset += FLAGS.vis_batch_size
+                    image_id_offset += FLAGS.batch_size
                     batch += 1
 
             tf.logging.info(
