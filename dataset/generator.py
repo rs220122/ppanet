@@ -73,6 +73,14 @@ tf.app.flags.DEFINE_boolean('debug_mode',
                             False,
                             'debug mode or not')
 
+tf.app.flags.DEFINE_integer('batch_size',
+                            8,
+                            'batch size')
+
+tf.app.flags.DEFINE_list('crop_size',
+                         '512, 512',
+                         'Image crop size [height, width]')
+
 
 _DATASETS_INFORMATION = {
     'cityscapes': {},

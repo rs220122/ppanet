@@ -69,16 +69,6 @@ tf.app.flags.DEFINE_integer('save_summaries_secs',
                             200,
                             'How often, in seconds, we compute the summaries.')
 
-tf.app.flags.DEFINE_integer('batch_size',
-                            8,
-                            'batch size')
-
-tf.app.flags.DEFINE_list('crop_size',
-                         '513, 513',
-                         'Image crop size [height, width]')
-
-
-
 
 def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, loss_weight=1.0, resize_logits=True):
     """ """
