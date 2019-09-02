@@ -35,6 +35,13 @@ def preprocess_image_and_label(image,
                                is_training=True,
                                model_variant=None):
     """Preprocesses the image and label.
+    This function do following steps.
+
+    1) Resize desired range, if min_resize_value and max_resize_value is not None.
+    2) Scaling during training.
+    3) Pad to image and label for cropping.
+    4) Crop.
+    5) Flip image and label during training.
 
     Args:
         image      : Input target image.
@@ -80,7 +87,7 @@ sed for training or not.
     # Resize image and label to the desired range.
     if min_resize_value or max_resize_value:
         [processed_image, label] = (
-            preprocessed_utils.resize_to_range(
+            preprocess_utils.resize_to_range(
                 image=processed_image,
                 label=label,
                 min_size=min_resize_value,

@@ -16,14 +16,18 @@ import sys
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 import numpy as np
+sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir))
 
 # user packages
 import generator
+from lib.utils import common
 
 FLAGS = tf.app.flags.FLAGS
 
 
 def main(argv):
+    common.print_args()
+    tf.logging.set_verbosity(tf.logging.DEBUG)
     crop_size = [int(FLAGS.crop_size[0]), int(FLAGS.crop_size[1])]
     dataset = generator.Dataset(FLAGS.dataset_dir,
                                 FLAGS.dataset_name,
@@ -38,7 +42,7 @@ def main(argv):
                                 scale_factor_step_size=FLAGS.scale_factor_step_size,
                                 is_training=True,
                                 model_variant=FLAGS.model_variant,
-                                should_shuffle=True)
+                                should_shuffle=False)
 
     iterator = dataset.get_one_shot_iterator()
     samples = iterator.get_next()

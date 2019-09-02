@@ -473,14 +473,16 @@ def resize_to_range(image,
         large_scale_factor = min_size / original_min_size
         large_height = tf.to_int32(tf.ceil(original_height * large_scale_factor))
         large_width = tf.to_int32(tf.ceil(original_width * large_scale_factor))
+        large_size = tf.stack([large_height, large_width])
 
         new_size = large_size
         if max_size is not None:
             # Calculate the smaller of the possible sizes , use that if the larger
             # is too big.
             original_max_size = tf.maximum(original_height, original_width)
-            small_scale_factor = tf.to_int32(tf.ceil(original_height * small_scale_factor))
-            small_height = tf.to_int32(tf.ceil(original_width * small_scale_factor))
+            small_scale_factor = max_size / original_max_size
+            small_height = tf.to_int32(tf.ceil(original_height * small_scale_factor))
+            small_width = tf.to_int32(tf.ceil(original_width * small_scale_factor))
             small_size = tf.stack([small_height, small_width])
             new_size = tf.cond(
                 tf.cast(tf.reduce_max(large_size), tf.float32) > max_size,
