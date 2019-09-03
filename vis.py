@@ -88,11 +88,11 @@ def create_camvid_label_colormap():
     colormap[8] = [64, 0, 128]    # Car
     colormap[9] = [64, 64, 0]     # Pedestrian
     colormap[10] = [0, 128, 128]  # Bicyclist
-    colormap[11] = [0, 0, 0]      # Void
+    colormap[11] = [0, 0, 0]      # Void(undefined) => ignore label.
 
     class_vs_colormap = {0: 'sky', 1: 'building', 2: 'column_pole', 3: 'road',
                          4: 'sidewalk', 5: 'tree', 6: 'sign', 7: 'fence', 8: 'car',
-                         9: 'pedestrian', 10: 'byciclist', 11: 'road'}
+                         9: 'pedestrian', 10: 'byciclist', 11: 'void (undefined)'}
 
     return colormap, class_vs_colormap
 

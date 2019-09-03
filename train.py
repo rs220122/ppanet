@@ -173,7 +173,7 @@ def get_model_init_fn(train_logdir,
     return None
 
 def main(argv):
-
+    tf.logging.set_verbosity(tf.logging.INFO)
     common.print_args()
 
     print('Training on %s %s set' % (FLAGS.split_name, FLAGS.dataset_name))
