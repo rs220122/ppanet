@@ -84,8 +84,8 @@ tf.app.flags.DEFINE_list('crop_size',
 
 _DATASETS_INFORMATION = {
     'cityscapes': {},
-    'camvid'    : {'num_classes': 12,
-                   'ignore_label': 255},
+    'camvid'    : {'num_classes': 11,
+                   'ignore_label': 11},
     'pascal_voc': {},
     'playing_for_data': {},
     'kitti'     : {}
