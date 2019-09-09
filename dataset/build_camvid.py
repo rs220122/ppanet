@@ -75,7 +75,7 @@ tf.app.flags.DEFINE_string(
     './CamVid/tfrecord',
     'Path to save converted SSTable of TensorFlow examples.')
 
-NUM_SHARD = 5
+NUM_SHARD = 1
 
 def _convert_dataset(dataset_split):
     """Converts the specified dataset split to TFRecord format.
