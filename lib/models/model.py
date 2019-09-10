@@ -65,6 +65,33 @@ def _build_aspp(features, atrous_rates, depth=256):
     return features
 
 
+def _build_self_attention(features):
+
+    with tf.variable_scope('self-attention', [features]):
+        original_channel = features.get_shape().as_list()[3]
+        features_1 = slim.conv2d(features, original_channel//8, 1, scope='attention_A')
+        features_2 = slim.conv2d(features, original_channel//8, 1, scope='attention_B')
+        features_3 = slim.conv2d(features, original_channel//8, 1, scope='attention_C')
+        batch, height, width, channel = features_1.get_shape()
+
+        reshaped_features_1 = tf.reshape(features_1, [batch, height*width, channel])
+        reshaped_features_2 = tf.reshape(features_2, [batch, height*width, channel])
+        reshaped_features_3 = tf.reshape(features_3, [batch, height*width, channel])
+
+        attention_map = tf.matmul(reshaped_features_1, tf.transpose(reshaped_features_2, [0, 2, 1]))
+        attention_map = tf.nn.softmax(attention_map, axis=2)
+
+        attention_features = tf.matmul(attention_map, reshape_features_3)
+        attention_features = tf.reshape(attentin_features, [batch, height, width, channel])
+        attention_features = slim.conv2d(attention_features, original_channel, 1)
+
+        alpha = tf.Variable(0, dtype=tf.float32,name='attention_alpha')
+
+        attention_features = alpha * attention_features + features
+
+    return attention_features
+
+
 def _build_decoder(features, end_points, model_variant, decoder_output_stride):
 
     with tf.variable_scope('decoder', [features]):
@@ -92,7 +119,8 @@ def build_model(images,
                 ppm_rates=None,
                 ppm_pooling_type='avg',
                 decoder_output_stride=None,
-                atrous_rates=None):
+                atrous_rates=None,
+                self_attention_flag=False):
 
     # backbone_atrous_rates requires model_variant=='resnet_beta'.
     if backbone_atrous_rates is not None:
@@ -100,7 +128,7 @@ def build_model(images,
             raise ValueError("You set 'backbone_atrous_rates'." +
                              "'model_variant' is not 'resnet_beta'. you set {}".format(model_variant))
     _, images_height, images_width, _ = images.get_shape().as_list()
-    features, end_points = feature_extractor.extract_features(
+    backbone_features, end_points = feature_extractor.extract_features(
                            images=images,
                            output_stride=output_stride,
                            model_variant=model_variant,
@@ -117,7 +145,7 @@ def build_model(images,
     for key, val in end_points.items():
         print('{}: {}'.format(key, val.shape))
 
-    print('features: {}, shape: {}'.format(features.name, features.get_shape().as_list()))
+    print('features: {}, shape: {}'.format(backbone_features.name, backbone_features.get_shape().as_list()))
 
     batch_norm_params = {
         'is_training': is_training and fine_tune_batch_norm,
@@ -135,9 +163,9 @@ def build_model(images,
         stride=1,):
         with slim.arg_scope([slim.batch_norm], **batch_norm_params):
             depth = 256
-            features = slim.conv2d(features, 512, 1, scope='dimension_reduction')
+            features = slim.conv2d(backbone_features, 512, 1, scope='dimension_reduction')
 
-            if (ppm_rates is not None) and (atrous_rates is not None):
+            if (ppm_rates is not None) and (atrous_rates is not None) and (self_attention_flag):
                 raise ValueError('Both ppm and aspp are set.' +
                                  'You must take away either ppm or aspp.')
 
@@ -147,6 +175,9 @@ def build_model(images,
 
             if atrous_rates is not None:
                 features = _build_aspp(features, atrous_rates, depth=depth)
+
+            if self_attention_flag:
+                features = _build_self_attention(features)
 
             if decoder_output_stride is not None:
                 features = _build_decoder(features, end_points, model_variant, decoder_output_stride)

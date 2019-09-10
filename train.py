@@ -234,7 +234,8 @@ def main(argv):
                                            ppm_rates=FLAGS.ppm_rates,
                                            ppm_pooling_type=FLAGS.ppm_pooling_type,
                                            decoder_output_stride=FLAGS.decoder_output_stride,
-                                           atrous_rates=FLAGS.atrous_rates)
+                                           atrous_rates=FLAGS.atrous_rates,
+                                           self_attention_flag=FLAGS.self_attention_flag)
                 print('logits.shape: {}'.format(logits.get_shape()))
 
                 add_softmax_cross_entropy_loss(

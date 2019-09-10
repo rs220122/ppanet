@@ -50,6 +50,10 @@ tf.app.flags.DEFINE_multi_integer('atrous_rates',
                                   None,
                                   'Atrous rates fro atrous spatial pyramid pooling.')
 
+tf.app.flags.DEFINE_boolean('self_attention_flag',
+                            False,
+                            'Whether add self-attention module or not.')
+
 
 # Define dataset keys.
 # このキーは、データセットを読み込むときに使われる
