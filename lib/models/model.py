@@ -72,20 +72,21 @@ def _build_self_attention(features):
         features_1 = slim.conv2d(features, original_channel//8, 1, scope='attention_A')
         features_2 = slim.conv2d(features, original_channel//8, 1, scope='attention_B')
         features_3 = slim.conv2d(features, original_channel//8, 1, scope='attention_C')
-        batch, height, width, channel = features_1.get_shape()
+        f_shape = tf.shape(features_1)
 
-        reshaped_features_1 = tf.reshape(features_1, [batch, height*width, channel])
-        reshaped_features_2 = tf.reshape(features_2, [batch, height*width, channel])
-        reshaped_features_3 = tf.reshape(features_3, [batch, height*width, channel])
+        reshaped_features_1 = tf.reshape(features_1, [f_shape[0], f_shape[1]*f_shape[2], f_shape[3]])
+        reshaped_features_2 = tf.reshape(features_2, [f_shape[0], f_shape[1]*f_shape[2], f_shape[3]])
+        reshaped_features_3 = tf.reshape(features_3, [f_shape[0], f_shape[1]*f_shape[2], f_shape[3]])
 
-        attention_map = tf.matmul(reshaped_features_1, tf.transpose(reshaped_features_2, [0, 2, 1]))
-        attention_map = tf.nn.softmax(attention_map, axis=2)
+        attention_map_1 = tf.matmul(reshaped_features_1, tf.transpose(reshaped_features_2, [0, 2, 1]))
+        attention_map = tf.nn.softmax(attention_map_1, axis=2)
 
-        attention_features = tf.matmul(attention_map, reshape_features_3)
-        attention_features = tf.reshape(attentin_features, [batch, height, width, channel])
-        attention_features = slim.conv2d(attention_features, original_channel, 1)
+        attention_features_1 = tf.matmul(attention_map, reshaped_features_3)
+        attention_features_2 = tf.reshape(attention_features_1, f_shape)
+        attention_features = slim.conv2d(attention_features_2, original_channel, 1)
 
         alpha = tf.Variable(0, dtype=tf.float32,name='attention_alpha')
+        tf.summary.scalar('self_attention alpha: %s' % alpha.op.name, alpha)
 
         attention_features = alpha * attention_features + features
 
