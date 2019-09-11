@@ -9,10 +9,11 @@
 NOW_DATE=`date '+%F'`
 TRAIN_LOGDIR='logs/aspp/log-'${NOW_DATE}
 mkdir -p ${TRAIN_LOGDIR}
+cp aspp_bash/aspp_train.sh ${TRAIN_LOGDIR}'/aspp_train.sh' 
 nohup python train.py \
-                --output_stride=16 \
-                --crop_size=512,512 \
-                --batch_size=8 \
+                --output_stride=8 \
+                --crop_size=360,480 \
+                --batch_size=4 \
                 --model_variant=resnet_v1_50_beta \
                 --backbone_atrous_rates=1 \
                 --backbone_atrous_rates=2 \
@@ -26,5 +27,5 @@ nohup python train.py \
                 --tf_initial_checkpoint=./backbone_ckpt/resnet_v1_50/model.ckpt \
                 --save_summaries_images \
                 --train_logdir=${TRAIN_LOGDIR} \
-                --train_steps=10000  > ${TRAIN_LOGDIR}'/out.log' &
+                --train_steps=90000  > ${TRAIN_LOGDIR}'/out.log' &
 less +F ${TRAIN_LOGDIR}'/out.log'

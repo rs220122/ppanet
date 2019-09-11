@@ -7,12 +7,12 @@
 #
 # ===============================================
 
-TRAIN_LOGDIR='logs/aspp/log-2019-08-26'
+TRAIN_LOGDIR='logs/aspp/log-2019-09-09'
 
 python vis.py \
-       --output_stride=16 \
+       --output_stride=8 \
        --batch_size=1 \
-       --crop_size=512,512 \
+       --crop_size=360,480 \
        --model_variant=resnet_v1_50_beta \
        --backbone_atrous_rates=1 \
        --backbone_atrous_rates=2 \
@@ -25,4 +25,5 @@ python vis.py \
        --checkpoint_dir=${TRAIN_LOGDIR} \
        --split_name=val \
        --dataset_name=camvid \
-       --dataset_dir=dataset/CamVid/tfrecord
+       --dataset_dir=dataset/CamVid/tfrecord \
+       --save_labels
