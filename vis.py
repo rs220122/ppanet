@@ -45,6 +45,10 @@ tf.app.flags.DEFINE_integer('max_number_of_iterations',
                             1,
                             'Maximum number of visualization iterations.')
 
+tf.app.flags.DEFINE_boolean('save_labels',
+                            False,
+                            'Also save labels')
+
 _SEMANTIC_PREDICTION_DIR = 'semantic_prediction_result'
 _RAW_PREDICTION_DIR = 'raw_prediction_result'
 
@@ -143,16 +147,31 @@ def save_annotation(label,
 
 def _process_batch(sess, original_images, semantic_predictions, image_names,
                    image_heights, image_widths, image_id_offset, save_dir,
-                   raw_save_dir, train_id_to_eval_id=None):
+                   raw_save_dir, train_id_to_eval_id=None, labels=None):
 
+    run_list = [original_images,
+                semantic_predictions,
+                image_names,
+                image_heights,
+                image_widths]
 
-    (original_images,
-     semantic_predictions,
-     image_names,
-     image_heights,
-     image_widths) = sess.run([original_images, semantic_predictions,
-                               image_names, image_heights, image_widths])
+    if FLAGS.save_labels:
+        run_list.append(labels)
 
+    result_list = sess.run(run_list)
+    # (original_images,
+    #  semantic_predictions,
+    #  image_names,
+    #  image_heights,
+    #  image_widths,
+    #  labels) = sess.run([original_images, semantic_predictions,
+    #                            image_names, image_heights, image_widths, labels])
+
+    original_images = result_list[0]
+    semantic_predictions = result_list[1]
+    image_names = result_list[2]
+    image_heights = result_list[3]
+    image_widths = result_list[4]
     num_images = original_images.shape[0]
     for i in range(num_images):
         image_height = np.squeeze(image_heights[i])
@@ -173,6 +192,15 @@ def _process_batch(sess, original_images, semantic_predictions, image_names,
                         filename='{:06}_pred'.format(image_id_offset+i),
                         add_colormap=True,
                         colormap_type=FLAGS.dataset_name)
+
+        if FLAGS.save_labels:
+            labels = result_list[5]
+            label = np.squeeze(labels[i])
+            save_annotation(label,
+                            save_dir,
+                            filename='{:06}_label'.format(image_id_offset+i),
+                            add_colormap=True,
+                            colormap_type=FLAGS.dataset_name)
 
 
 
@@ -251,6 +279,7 @@ def main(argv):
                                    image_names=samples[common.IMAGE_FILENAME],
                                    image_heights=samples[common.IMAGE_HEIGHT],
                                    image_widths=samples[common.IMAGE_WIDTH],
+                                   labels=samples[common.LABEL],
                                    image_id_offset=image_id_offset,
                                    save_dir=save_dir,
                                    raw_save_dir=raw_save_dir)
