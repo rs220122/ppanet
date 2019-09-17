@@ -60,6 +60,17 @@ def main(argv):
     with tf.Graph().as_default():
         samples = dataset.get_one_shot_iterator().get_next()
 
+        # predictions = model.predict_labels(
+        #         samples[common.IMAGE],
+        #         num_classes=dataset.num_classes,
+        #         model_variant=FLAGS.model_variant,
+        #         output_stride=FLAGS.output_stride,
+        #         backbone_atrous_rates=FLAGS.backbone_atrous_rates,
+        #         ppm_rates=FLAGS.ppm_rates,
+        #         decoder_output_stride=FLAGS.decoder_output_stride,
+        #         atrous_rates=FLAGS.atrous_rates,
+        #         )
+
         predictions = model.predict_labels(
                 samples[common.IMAGE],
                 num_classes=dataset.num_classes,
@@ -67,8 +78,11 @@ def main(argv):
                 output_stride=FLAGS.output_stride,
                 backbone_atrous_rates=FLAGS.backbone_atrous_rates,
                 ppm_rates=FLAGS.ppm_rates,
+                ppm_pooling_type=FLAGS.ppm_pooling_type,
                 decoder_output_stride=FLAGS.decoder_output_stride,
-                atrous_rates=FLAGS.atrous_rates)
+                atrous_rates=FLAGS.atrous_rates,
+                self_attention_flag=FLAGS.self_attention_flag,
+                ppa_flag=FLAGS.ppa_flag)
 
         predictions = tf.reshape(predictions, shape=[-1])
         labels = tf.reshape(samples[common.LABEL], shape=[-1])

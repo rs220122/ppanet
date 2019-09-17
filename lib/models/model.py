@@ -21,6 +21,12 @@ import sys
 from lib.models.backbone import feature_extractor
 from lib.models.backbone.feature_extractor import DECODER_END_POINTS
 
+# module list.
+# ppm  => pyramid pooling module.
+# aspp => atrous spatial pyramid pooling.
+# sa   => self-attention.
+# ppa  => pyramid pooling attention. my aproach.
+_MODULE_LIST = ['ppm', 'aspp', 'sa', 'ppa']
 
 def _build_ppm(features, ppm_rates, ppm_pooling_type, depth=256):
 
@@ -65,32 +71,48 @@ def _build_aspp(features, atrous_rates, depth=256):
     return features
 
 
-def _build_self_attention(features):
+def _build_self_attention(features1, features2=None):
 
-    with tf.variable_scope('self-attention', [features]):
-        original_channel = features.get_shape().as_list()[3]
-        features_1 = slim.conv2d(features, original_channel//8, 1, scope='attention_A')
-        features_2 = slim.conv2d(features, original_channel//8, 1, scope='attention_B')
-        features_3 = slim.conv2d(features, original_channel//8, 1, scope='attention_C')
-        f_shape = tf.shape(features_1)
+    with tf.variable_scope('self_attention', [features1]):
+        original_channel = features1.get_shape().as_list()[3]
+        features_A = slim.conv2d(features1, original_channel//8, 1, scope='attention_A')
+        if features2 is not None:
+            features_B = slim.conv2d(features2, original_channel//8, 1, scope='attention_B')
+        else:
+            features_B = slim.conv2d(features1, original_channel//8, 1, scope='attention_B')
+        features_C = slim.conv2d(features1, original_channel//8, 1, scope='attention_C')
+        f_shape = tf.shape(features_A)
 
-        reshaped_features_1 = tf.reshape(features_1, [f_shape[0], f_shape[1]*f_shape[2], f_shape[3]])
-        reshaped_features_2 = tf.reshape(features_2, [f_shape[0], f_shape[1]*f_shape[2], f_shape[3]])
-        reshaped_features_3 = tf.reshape(features_3, [f_shape[0], f_shape[1]*f_shape[2], f_shape[3]])
+        reshaped_features_A = tf.reshape(features_A, [f_shape[0], f_shape[1]*f_shape[2], f_shape[3]])
+        reshaped_features_B = tf.reshape(features_B, [f_shape[0], f_shape[1]*f_shape[2], f_shape[3]])
+        reshaped_features_C = tf.reshape(features_C, [f_shape[0], f_shape[1]*f_shape[2], f_shape[3]])
 
-        attention_map_1 = tf.matmul(reshaped_features_1, tf.transpose(reshaped_features_2, [0, 2, 1]))
-        attention_map = tf.nn.softmax(attention_map_1, axis=2)
+        attention_map = tf.matmul(reshaped_features_A, tf.transpose(reshaped_features_B, [0, 2, 1]))
+        attention_map = tf.nn.softmax(attention_map, axis=2)
 
-        attention_features_1 = tf.matmul(attention_map, reshaped_features_3)
-        attention_features_2 = tf.reshape(attention_features_1, f_shape)
-        attention_features = slim.conv2d(attention_features_2, original_channel, 1)
+        attention_features = tf.matmul(attention_map, reshaped_features_C)
+        attention_features = tf.reshape(attention_features, f_shape)
+        attention_features = slim.conv2d(attention_features, original_channel, 1)
 
-        alpha = tf.Variable(0, dtype=tf.float32,name='attention_alpha')
-        tf.summary.scalar('self_attention alpha: %s' % alpha.op.name, alpha)
+        alpha_initializer = tf.constant_initializer([0])
+        alpha = tf.get_variable('attention_alpha', shape=[], dtype=tf.float32, initializer=alpha_initializer)
+        tf.summary.scalar('attention_alpha', alpha)
 
-        attention_features = alpha * attention_features + features
+        attention_features = alpha * attention_features + features1
 
     return attention_features
+
+
+def _build_ppa(features, ppm_rates, ppm_pooling_type, atrous_rates, depth=256):
+
+    with tf.variable_scope('pyramid_pooling_attention', [features]):
+
+        ppm_features = _build_ppm(features, ppm_rates, ppm_pooling_type, depth=depth//2)
+        aspp_features = _build_aspp(features, atrous_rates, depth=depth//2)
+
+        ppa_features = _build_self_attention(ppm_features, aspp_features)
+
+    return ppa_features
 
 
 def _build_decoder(features, end_points, model_variant, decoder_output_stride):
@@ -121,7 +143,9 @@ def build_model(images,
                 ppm_pooling_type='avg',
                 decoder_output_stride=None,
                 atrous_rates=None,
-                self_attention_flag=False):
+                self_attention_flag=False,
+                module_order=None,
+                ppa_flag=False):
 
     # backbone_atrous_rates requires model_variant=='resnet_beta'.
     if backbone_atrous_rates is not None:
@@ -166,19 +190,61 @@ def build_model(images,
             depth = 256
             features = slim.conv2d(backbone_features, 512, 1, scope='dimension_reduction')
 
-            if (ppm_rates is not None) and (atrous_rates is not None) and (self_attention_flag):
-                raise ValueError('Both ppm and aspp are set.' +
-                                 'You must take away either ppm or aspp.')
+            module_list = []
+            # if two or three modules are specified.
+            if (((atrous_rates is not None) and (ppm_rates is not None)) or
+               ((ppm_rates is not None) and self_attention_flag) or
+               (self_attention_flag and (atrous_rates is not None))):
+                if module_order is not None:
+                    for module in module_order:
+                        if module in _MODULE_LIST:
+                            module_list.append(module)
+                        else:
+                            raise ValueError('{} module is not implemented.' +
+                                             'now implemented modules is {}'.format(module, _MODULE_LIST))
+                elif ppa_flag:
+                    module_list.append('ppa')
+                else:
+                    print('ppa_flag: {}'.format(ppa_flag))
+                    raise ValueError('There are two modules you specify. you should specify module_order in FLAG.')
 
-            if ppm_rates is not None:
-                # perform pyramid pooling module proposed by PSPNet.
-                features = _build_ppm(features, ppm_rates, ppm_pooling_type, depth=depth)
+            # if only one module are specified.
+            else:
+                if ppm_rates is not None:
+                    module_list.append('ppm')
+                elif atrous_rates is not None:
+                    module_list.append('aspp')
+                elif self_attention_flag:
+                    module_list.append('sa')
+                else:
+                    print('NO EXTRA MODULE')
 
-            if atrous_rates is not None:
-                features = _build_aspp(features, atrous_rates, depth=depth)
 
-            if self_attention_flag:
-                features = _build_self_attention(features)
+            for i, module in enumerate(module_list):
+                tf.logging.info('{}-th module: {}'.format(i+1, module))
+                if module == 'ppm':
+                    features = _build_ppm(features, ppm_rates, ppm_pooling_type, depth=depth)
+                elif module == 'aspp':
+                    features = _build_aspp(features, atrous_rates, depth=depth)
+                elif module == 'sa':
+                    features = _build_self_attention(features)
+                elif module == 'ppa':
+                    features = _build_ppa(features, ppm_rates, ppm_pooling_type, atrous_rates, depth=depth)
+
+
+            # if (ppm_rates is not None) and (atrous_rates is not None) and (self_attention_flag):
+            #     raise ValueError('Both ppm and aspp are set.' +
+            #                      'You must take away either ppm or aspp.')
+
+            # if ppm_rates is not None:
+            #     # perform pyramid pooling module proposed by PSPNet.
+            #     features = _build_ppm(features, ppm_rates, ppm_pooling_type, depth=depth)
+            #
+            # if atrous_rates is not None:
+            #     features = _build_aspp(features, atrous_rates, depth=depth)
+            #
+            # if self_attention_flag:
+            #     features = _build_self_attention(features)
 
             if decoder_output_stride is not None:
                 features = _build_decoder(features, end_points, model_variant, decoder_output_stride)
@@ -196,8 +262,11 @@ def predict_labels(images,
                    output_stride,
                    backbone_atrous_rates,
                    ppm_rates,
+                   ppm_pooling_type,
                    decoder_output_stride,
-                   atrous_rates):
+                   atrous_rates,
+                   self_attention_flag,
+                   ppa_flag):
 
     logits = build_model(images,
                          num_classes=num_classes,
@@ -205,10 +274,13 @@ def predict_labels(images,
                          output_stride=output_stride,
                          backbone_atrous_rates=backbone_atrous_rates,
                          ppm_rates=ppm_rates,
+                         ppm_pooling_type=ppm_pooling_type,
                          decoder_output_stride=decoder_output_stride,
                          atrous_rates=atrous_rates,
                          is_training=False,
-                         fine_tune_batch_norm=False)
+                         fine_tune_batch_norm=False,
+                         self_attention_flag=self_attention_flag,
+                         ppa_flag=ppa_flag)
 
 
     logits = tf.image.resize_bilinear(logits, tf.shape(images)[1:3], align_corners=True)

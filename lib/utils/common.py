@@ -17,8 +17,6 @@ import numpy as np
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_enum('image_format', 'png', ['jpg', 'jpeg', 'png'],
-                         'Image format')
 
 tf.app.flags.DEFINE_integer('output_stride',
                             16,
@@ -54,6 +52,17 @@ tf.app.flags.DEFINE_boolean('self_attention_flag',
                             False,
                             'Whether add self-attention module or not.')
 
+tf.app.flags.DEFINE_list('module_order',
+                         None,
+                         'モジュールの順番を指定できる.\n' +
+                         '例えば、ppmとasppの2つのモジュールをひとつ' +
+                         'のモジュールに使いたい場合、' +
+                         'どっちを最初のモジュールにするかを指定できる.' +
+                         'aspp-ppmと順番で使いたい場合は, \'aspp, ppm\'')
+
+tf.app.flags.DEFINE_boolean('ppa_flag',
+                            False,
+                            '')
 
 # Define dataset keys.
 # このキーは、データセットを読み込むときに使われる
