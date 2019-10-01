@@ -56,8 +56,12 @@ def main(argv):
     res = sess.run(samples)
     print(res.keys())
 
-    image = res['image']
-    ann = res['label']
+    image = res[common.IMAGE]
+    ann = res[common.LABEL]
+    original_height = res[common.IMAGE_HEIGHT]
+    original_width  = res[common.IMAGE_WIDTH]
+    print(original_height)
+    print(original_width)
 
     print('image.shape => ', image.shape)
     print('ann.shape   => ', ann.shape)

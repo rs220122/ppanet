@@ -86,8 +86,8 @@ _DATASETS_INFORMATION = {
     'cityscapes': {},
     'camvid'    : {'num_classes': 11,
                    'ignore_label': 11},
-    'pascal_voc': {},
-    'playing_for_data': {},
+    'pascal_voc': {'num_classes': 21,
+                   'ignore_label': 255},
     'kitti'     : {}
 }
 

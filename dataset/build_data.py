@@ -32,7 +32,7 @@ import tensorflow as tf
 class ImageReader(object):
     """Helper class that provides TensorFlow image coding utilities."""
 
-    def __init__(self, channels=3):
+    def __init__(self, channels=3, img_format='png'):
         """Class constructor.
 
         Args:
@@ -41,9 +41,15 @@ class ImageReader(object):
         self._decode_data = tf.placeholder(dtype=tf.string)
         self._session = tf.Session()
 
-        self._decode = tf.image.decode_png(self._decode_data,
-                                           channels=channels)
-
+        if img_format == 'png':
+            self._decode = tf.image.decode_png(self._decode_data,
+                                               channels=channels)
+        elif img_format == 'jpeg':
+            self._decode = tf.image.decode_jpeg(self._decode_data,
+                                                channels=channels)
+        else:
+            raise RuntimeError('This format {} is not implemented.'.format(img_format))
+        
     def read_image_dims(self, image_data):
         """Reads the image dimensions.
 
