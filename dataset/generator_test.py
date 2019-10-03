@@ -24,6 +24,10 @@ from lib.utils import common
 
 FLAGS = tf.app.flags.FLAGS
 
+tf.app.flags.DEFINE_boolean('is_training',
+                            True,
+                            'training flag for testing that is_training flag is used.')
+
 
 def main(argv):
     common.print_args()
@@ -40,7 +44,7 @@ def main(argv):
                                 min_scale_factor=FLAGS.min_scale_factor,
                                 max_scale_factor=FLAGS.max_scale_factor,
                                 scale_factor_step_size=FLAGS.scale_factor_step_size,
-                                is_training=True,
+                                is_training=FLAGS.is_training,
                                 model_variant=FLAGS.model_variant,
                                 should_shuffle=False)
 

@@ -86,7 +86,7 @@ _DATASETS_INFORMATION = {
     'cityscapes': {},
     'camvid'    : {'num_classes': 11,
                    'ignore_label': 11},
-    'pascal_voc': {'num_classes': 21,
+    'pascal': {'num_classes': 21,
                    'ignore_label': 255},
     'kitti'     : {}
 }
@@ -181,9 +181,9 @@ class Dataset(object):
 
         parsed_features = tf.parse_single_example(example_proto, features)
 
-        if FLAGS.debug_mode:
-            for key in parsed_features:
-                print('{}: {}'.format(key, parsed_features[key]))
+
+        for key in parsed_features:
+            tf.logging.debug('{}: {}'.format(key, parsed_features[key]))
 
         # decode image and label.
         image = tf.image.decode_png(parsed_features['image/encoded'], 3)
