@@ -69,18 +69,20 @@ tf.app.flags.DEFINE_integer('save_summaries_secs',
                             200,
                             'How often, in seconds, we compute the summaries.')
 
+tf.app.flags.DEFINE_boolean('train_on_original_size',
+                            True,
+                            'Training original size or output stride size.' +
+                            'Train original size if you set the True.')
 
-def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, loss_weight=1.0, resize_logits=True):
+def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, loss_weight=1.0):
     """ """
     if labels is None:
         raise ValueError('No label for softmax cross entropy.')
 
-    _, labels_height, labels_width, _ = labels.get_shape().as_list()
-    _, logits_height, logits_width, _ = logits.get_shape().as_list()
+    _, logits_height, logits_width, _ = logits.get_shape()
+    _, labels_height, labels_width, _ = labels.get_shape()
+
     if logits_height != labels_height or logits_width != labels_width:
-        if resize_logits:
-            logits = tf.image.resize_bilinear(logits, [labels_height, labels_width], align_corners=True)
-        else:
             raise ValueError('logits shape is not equal to labels. ' +
                              'logits.shape => {}, labels.shape=> {}'.format((logits_height, logits_width),
                                                                             (labels_height, labels_width)))
@@ -99,7 +101,7 @@ def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, lo
         scope='Loss')
 
 
-def log_summaries(input, labels, num_classes, logits):
+def log_summaries(input, labels, num_classes, logits, ignore_label):
     """ Logs the summaries for the model.
 
     Args:
@@ -107,6 +109,7 @@ def log_summaries(input, labels, num_classes, logits):
         label: Label of the image. Its shape is [batch_size, height, width].
         num_classes: The number of classes of the dataset.
         output: Output of the model. Its shape is [batch_size, height, width].
+        ignore_label: Ignore label.
     """
     # Add summaries for model variables.
     # model variables are variables created by a slim.conv2d and so on.
@@ -124,11 +127,38 @@ def log_summaries(input, labels, num_classes, logits):
         tf.summary.image('samples/label', summary_labels)
 
         logits = tf.argmax(logits, 3)
-        print('logits.shape: {}'.format(logits.get_shape().as_list()))
         predictions = tf.expand_dims(logits, axis=3)
-        print('predictions.shape: {}'.format(predictions.get_shape().as_list()))
         summary_predictions = tf.cast(predictions * pixel_scaling, tf.uint8)
         tf.summary.image('sample/logits', summary_predictions)
+
+        # Compute a per-batch confusion
+        zeros_like = tf.zeros_like(labels, dtype=tf.int32)
+        not_ignore_mask = tf.cast(tf.not_equal(labels, ignore_label), dtype=tf.float32)
+        not_ignore_mask = tf.not_equal(labels, ignore_label)
+        modified_labels = tf.where(not_ignore_mask, labels, zeros_like)
+
+        with tf.control_dependencies([modified_labels]):
+            batch_confusion = tf.confusion_matrix(tf.reshape(modified_labels, [-1]),
+                                                  tf.reshape(logits, [-1]),
+                                                  num_classes=num_classes,
+                                                  weights=tf.reshape(tf.cast(not_ignore_mask, tf.float32), [-1]),
+                                                  name='batch_confusion_matrix')
+
+            # Cast counts to float so tf.summary.image renomalization to [0,255]
+            # Tensorflow broadcast this value to axis=1, so that this value should be transposed.
+            sum_row_confusion = tf.math.reduce_sum(batch_confusion, axis=1)
+            # avoid zeros divide.
+            sum_row_confusion = tf.where(tf.equal(sum_row_confusion, 0), tf.ones_like(sum_row_confusion), sum_row_confusion)
+            sum_row_confusion = tf.transpose(tf.broadcast_to(sum_row_confusion, shape=batch_confusion.get_shape()))
+            batch_confusion_norm = batch_confusion / sum_row_confusion
+            diag = tf.linalg.diag(tf.ones(shape=num_classes)*0.4)
+            diag = tf.cast(diag, tf.float64)
+            confusion_image = tf.stack([batch_confusion_norm, diag, diag], axis=2)
+            confusion_image = tf.expand_dims(confusion_image, axis=0)
+
+            tf.summary.image('train_confusion_matrix', confusion_image)
+
+
 
 
 
@@ -238,17 +268,24 @@ def main(argv):
                                            self_attention_flag=FLAGS.self_attention_flag,
                                            module_order=FLAGS.module_order,
                                            ppa_flag=FLAGS.ppa_flag)
-                print('logits.shape: {}'.format(logits.get_shape()))
+
+                logits = tf.identity(logits, name='dense_prediction')
+                tf.logging.info('logits.shape: {}'.format(logits.get_shape()))
+                _, labels_height, labels_width, _ = labels.get_shape().as_list()
+                _, logits_height, logits_width, _ = logits.get_shape().as_list()
+                if FLAGS.train_on_original_size:
+                    logits = tf.image.resize_bilinear(logits, (labels_height, labels_width), align_corners=True)
+                else:
+                    labels = tf.image.resize_nearest_neighbor(labels, (logits_height, logits_width), align_corner=True)
 
                 add_softmax_cross_entropy_loss(
                     logits,
                     labels,
                     dataset.num_classes,
                     dataset.ignore_label,
-                    loss_weight=1.0,
-                )
-                logits = tf.identity(logits, name='dense_prediction')
-                log_summaries(input, labels, dataset.num_classes, logits)
+                    loss_weight=1.0)
+
+                log_summaries(input, labels, dataset.num_classes, logits, dataset.ignore_label)
 
             # should_log
             should_log = math_ops.equal(math_ops.mod(global_step, FLAGS.log_steps), 0)
@@ -258,12 +295,6 @@ def main(argv):
             print_losses = []
             for loss in losses:
                 tf.summary.scalar('Losses:%s' % loss.op.name, loss)
-                # print_ops.append(tf.cond(
-                #     should_log,
-                #     lambda: tf.print('raw loss is:',
-                #                      loss,
-                #                      output_stream=sys.stdout),
-                #     lambda: False))
 
                 print_losses.append(tf.cond(
                     should_log,
@@ -273,12 +304,6 @@ def main(argv):
             regularization_loss = tf.losses.get_regularization_loss(scope=scope)
             tf.summary.scalar('Losses/%s' % regularization_loss.op.name,
                               regularization_loss)
-            # print_ops.append(tf.cond(
-            #     should_log,
-            #     lambda: tf.print('regularization loss is:',
-            #                      regularization_loss,
-            #                      output_stream=sys.stdout),
-            #     lambda: False))
             regularization_loss = tf.cond(
                 should_log,
                 lambda: tf.Print(regularization_loss, [regularization_loss], 'regularization loss is:'),
@@ -304,12 +329,6 @@ def main(argv):
                 should_log,
                 lambda: tf.Print(total_loss, [total_loss], 'Total loss is:'),
                 lambda: total_loss)
-            # print_ops.append(tf.cond(
-            #     should_log,
-            #     lambda: tf.print('total loss is:',
-            #                      total_loss,
-            #                      output_stream=sys.stdout),
-            #     lambda: False))
             global_step = tf.cond(
                 should_log,
                 lambda: tf.Print(global_step, [global_step], 'global_step is:'),
