@@ -12,12 +12,16 @@ import tensorflow as tf
 import os
 import sys
 from tensorflow.python import math_ops
-from PIL import Image
 import numpy as np
 import time
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from tensorflow.python.tools import inspect_checkpoint as ckpt
+import io
 
 # user packages
-from lib.utils import common
+from lib.utils import common, colormap_utils
 from dataset import generator
 from lib.models import model
 
@@ -37,10 +41,6 @@ tf.app.flags.DEFINE_integer('eval_interval_secs',
                             200,
                             'How often to run evaluation.')
 
-tf.app.flags.DEFINE_boolean('save_raw_predictions',
-                            False,
-                            'Also save raw predictions.')
-
 tf.app.flags.DEFINE_integer('max_number_of_iterations',
                             1,
                             'Maximum number of visualization iterations.')
@@ -49,126 +49,51 @@ tf.app.flags.DEFINE_boolean('save_labels',
                             False,
                             'Also save labels')
 
+tf.app.flags.DEFINE_boolean('log_confusion',
+                            True,
+                            'Log the Confusion matrix to tensorboard.')
+
 _SEMANTIC_PREDICTION_DIR = 'semantic_prediction_result'
-_RAW_PREDICTION_DIR = 'raw_prediction_result'
 
 
-def create_cityscapes_label_colormap():
-    """Creates a label colormap used in CITYSCAPES segmentation benchmark."""
-    colormap = np.zeros((256, 3), dtype=np.uint8)
-    colormap[0] = [128, 64, 128]
-    colormap[1] = [244, 35, 232]
-    colormap[2] = [70, 70, 70]
-    colormap[3] = [102, 102, 156]
-    colormap[4] = [190, 153, 153]
-    colormap[5] = [153, 153, 153]
-    colormap[6] = [250, 170, 30]
-    colormap[7] = [220, 220, 0]
-    colormap[8] = [107, 142, 35]
-    colormap[9] = [152, 251, 152]
-    colormap[10] = [70, 130, 180]
-    colormap[11] = [220, 20, 60]
-    colormap[12] = [255, 0, 0]
-    colormap[13] = [0, 0, 142]
-    colormap[14] = [0, 0, 70]
-    colormap[15] = [0, 60, 100]
-    colormap[16] = [0, 80, 100]
-    colormap[17] = [0, 0, 230]
-    colormap[18] = [119, 11, 32]
-    return colormap
 
 
-def create_camvid_label_colormap():
-    """Creates a label colormap used in CamVid dataset."""
-    colormap = np.zeros((12, 3), dtype=np.uint8)
-    colormap[0] = [128, 128, 128] # sky
-    colormap[1] = [128, 0, 0]     # building
-    colormap[2] = [192, 192, 128] # column_pole
-    colormap[3] = [128, 64, 128]  # road
-    colormap[4] = [0, 0, 192]     # sidewalk
-    colormap[5] = [128, 128, 0]   # Tree
-    colormap[6] = [192, 128, 128] # SignSymbol
-    colormap[7] = [64, 64, 128]   # Fence
-    colormap[8] = [64, 0, 128]    # Car
-    colormap[9] = [64, 64, 0]     # Pedestrian
-    colormap[10] = [0, 128, 128]  # Bicyclist
-    colormap[11] = [0, 0, 0]      # Void(undefined) => ignore label.
-
-    class_vs_colormap = {0: 'sky', 1: 'building', 2: 'column_pole', 3: 'road',
-                         4: 'sidewalk', 5: 'tree', 6: 'sign', 7: 'fence', 8: 'car',
-                         9: 'pedestrian', 10: 'byciclist', 11: 'void (undefined)'}
-
-    return colormap, class_vs_colormap
-
-
-def label_to_color_image(label, colormap_type):
+def _process_batch(sess, samples, predictions,
+                   image_id_offset, save_dir,
+                   conf_mat_op=None, conf_mat=None):
     """
+    Do Visualizing process on batch.
+
+    Args:
+        sess            : TensorFlow session.
+        samples         : samples created by iterator.
+        predictions     : Predictions created by model.
+        image_id_offset : Offset. This value is used when saving images and labels.
+        save_dir        : Directory where images and labels are saved.
+        conf_mat_op     : Confusion matrix operation.
+        conf_mat        : Confusion matrix.
+
+    Return: Confusion matrix created by session, if confusion matrix is not None.
     """
-    if label.ndim != 2:
-        raise ValueError('Expect 2-D input label. Got {}.'.format(label.shape))
 
-    if colormap_type == 'camvid':
-        colormap, _ = create_camvid_label_colormap()
-    elif colormap_type =='cityscapes':
-        colormap = create_cityscapes_label_colormap()
-    else:
-        raise ValueError('colormap_type {} is not defined'.format(colormap_type))
-    return colormap[label]
-
-
-def save_annotation(label,
-                    save_dir,
-                    filename,
-                    add_colormap=True,
-                    normalize_to_unit_values=False,
-                    scale_values=False,
-                    colormap_type=None):
-
-    # Add colormap for visulizing the prediction.
-    if add_colormap:
-        colored_label = label_to_color_image(label, colormap_type)
-    else:
-        colored_label = label
-        if normalize_to_unit_values:
-            min_value = np.amin(colored_label)
-            max_value = np.amax(colored_label)
-            range_value = max_value - min_value
-            if range_value != 0:
-                colored_label = (colored_label - min_value) / range_value
-
-        if scale_values:
-            colored_label = 255 * colored_label
-
-    pil_image = Image.fromarray(colored_label.astype(dtype=np.uint8))
-    with tf.gfile.Open('%s/%s.png' %(save_dir, filename), mode='w') as f:
-        pil_image.save(f, 'PNG')
-
-
-
-def _process_batch(sess, original_images, semantic_predictions, image_names,
-                   image_heights, image_widths, image_id_offset, save_dir,
-                   raw_save_dir, train_id_to_eval_id=None, labels=None):
-
-    run_list = [original_images,
-                semantic_predictions,
-                image_names,
-                image_heights,
-                image_widths]
-
+    run_list = [
+        samples[common.ORIGINAL_IMAGE],
+        predictions,
+        samples[common.IMAGE_FILENAME],
+        samples[common.IMAGE_HEIGHT],
+        samples[common.IMAGE_WIDTH]
+    ]
     if FLAGS.save_labels:
-        run_list.append(labels)
+        run_list.append(samples[common.LABEL])
+
+    if FLAGS.log_confusion:
+        run_list.append(conf_mat_op)
+        run_list.append(conf_mat)
 
     result_list = sess.run(run_list)
-    # (original_images,
-    #  semantic_predictions,
-    #  image_names,
-    #  image_heights,
-    #  image_widths,
-    #  labels) = sess.run([original_images, semantic_predictions,
-    #                            image_names, image_heights, image_widths, labels])
 
     original_images = result_list[0]
-    semantic_predictions = result_list[1]
+    predictions = result_list[1]
     image_names = result_list[2]
     image_heights = result_list[3]
     image_widths = result_list[4]
@@ -177,37 +102,125 @@ def _process_batch(sess, original_images, semantic_predictions, image_names,
         image_height = np.squeeze(image_heights[i])
         image_width  = np.squeeze(image_widths[i])
         original_image = np.squeeze(original_images[i])
-        semantic_prediction = np.squeeze(semantic_predictions[i])
-        crop_semantic_prediction = semantic_prediction[:image_height, :image_width]
+        prediction = np.squeeze(predictions[i])
+        crop_prediction = prediction[:image_height, :image_width]
         image_name = np.squeeze(image_names[i])
 
         # Save image.
-        save_annotation(original_image,
-                        save_dir,
-                        filename='{:06}_image'.format(image_id_offset+i),
+        image_path = os.path.join(save_dir, '{:06}_image'.format(image_id_offset+i))
+        colormap_utils.save_annotation(original_image,
+                        image_path,
                         add_colormap=False)
 
-        save_annotation(crop_semantic_prediction,
-                        save_dir,
-                        filename='{:06}_pred'.format(image_id_offset+i),
+        # Save prediction.
+        prediction_path = os.path.join(save_dir, '{:06}_pred'.format(image_id_offset+i))
+        colormap_utils.save_annotation(crop_prediction,
+                        prediction_path,
                         add_colormap=True,
                         colormap_type=FLAGS.dataset_name)
 
         if FLAGS.save_labels:
+            # Save label.
             labels = result_list[5]
             label = np.squeeze(labels[i])
-            save_annotation(label,
-                            save_dir,
-                            filename='{:06}_label'.format(image_id_offset+i),
+            label_path = os.path.join(save_dir, '{:06}_label'.format(image_id_offset+i))
+            colormap_utils.save_annotation(label,
+                            label_path,
                             add_colormap=True,
                             colormap_type=FLAGS.dataset_name)
 
+    if conf_mat_op is not None:
+        return result_list[-1]
+    else:
+        return None
+
+
+def create_conf_mat_op(labels, logits, num_classes, ignore_label):
+    """
+    Create the confusion matrix operation.
+
+    Args:
+        labels       : Labels which are actually correct labels.
+        logits       : Logits which are predicted by model.
+        num_classes  : The number of class.
+        ignore_label : Ignore label.
+
+    Return: Confusion matrix operation.
+    """
+    zeros_like = tf.zeros_like(labels, dtype=tf.int32)
+    mask = tf.equal(labels, ignore_label)
+    not_ignore_mask = tf.cast(tf.not_equal(labels, ignore_label), dtype=tf.float32)
+    labels = tf.where(mask, zeros_like, labels)
+    # Compute a per-batch confusion
+    batch_confusion = tf.confusion_matrix(tf.reshape(labels, [-1]),
+                                          tf.reshape(logits, [-1]),
+                                          num_classes=num_classes,
+                                          weights=tf.reshape(not_ignore_mask, [-1]),
+                                          name='batch_confusion_matrix')
+
+    # Create an accumulator variable to hold the counts
+    confusion = tf.Variable(tf.zeros([num_classes, num_classes],
+                                     dtype=tf.int32),
+                            name='confusion_matrix')
+    # Create the update op for doing an accumulation on the batch
+    confusion_update = confusion.assign(confusion + batch_confusion)
+
+    return confusion_update, confusion
+
+
+def summary_conf_mat(conf_mat, logdir):
+    """
+    Convert the confusion matrix created by TensorFlow session using seaborn.
+    Save the heatmap to tensorboard.
+    For saving to tensorboard, create the new session. This session differ the
+    MonitoredSession.
+
+    Args:
+        conf_mat : Confusion matrix created by session. assuming that type is numpy 2D array.
+        logdir   : Log directory.
+    """
+
+    # Creating the temporary graph for saving confusion matrix heatmap.
+    temp_graph = tf.Graph()
+    with temp_graph.as_default():
+        norm_conf_mat = conf_mat / np.sum(conf_mat, axis=1, keepdims=True)
+        norm_conf_mat = np.around(norm_conf_mat, decimals=2)
+
+        _, class_name = colormap_utils.create_camvid_label_colormap()
+
+        conf_mat = pd.DataFrame(norm_conf_mat,
+                                index=class_name[:-1],
+                                columns=class_name[:-1])
+
+        figure = plt.figure(figsize=(7, 7), facecolor='w', edgecolor='k')
+        ax = sns.heatmap(conf_mat, annot=True, cmap=plt.cm.Blues)
+        plt.tight_layout(True)
+        plt.ylabel('True label')
+        plt.xlabel('Predicted label')
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        plt.close(figure)
+        buf.seek(0)
+        image = tf.image.decode_png(buf.getvalue(), channels=4)
+        image = tf.expand_dims(image, 0)
+
+        file_writer = tf.summary.FileWriter(logdir=logdir)
+
+        summary = tf.summary.image('Confusion_Matrix', image)
+
+        sess = tf.Session(graph=temp_graph)
+        summary = sess.run(summary)
+
+        file_writer.add_summary(summary, global_step=0)
+        sess.close()
+        file_writer.close()
 
 
 def main(argv):
     tf.logging.set_verbosity(tf.logging.INFO)
     common.print_args()
 
+    # Create dataset generator
     dataset = generator.Dataset(
                 dataset_dir=FLAGS.dataset_dir,
                 dataset_name=FLAGS.dataset_name,
@@ -229,8 +242,6 @@ def main(argv):
     tf.gfile.MakeDirs(FLAGS.vis_logdir)
     save_dir = os.path.join(FLAGS.vis_logdir, _SEMANTIC_PREDICTION_DIR)
     tf.gfile.MakeDirs(save_dir)
-    raw_save_dir = os.path.join(FLAGS.vis_logdir, _RAW_PREDICTION_DIR)
-    tf.gfile.MakeDirs(raw_save_dir)
 
     tf.logging.info('Visualizing on %s set', FLAGS.split_name)
 
@@ -255,6 +266,22 @@ def main(argv):
         checkpoints_iterator = tf.contrib.training.checkpoints_iterator(
             FLAGS.checkpoint_dir, min_interval_secs=FLAGS.eval_interval_secs)
 
+        if FLAGS.log_confusion:
+            # Get the confusion matrix op.
+            conf_mat_op, conf_mat = create_conf_mat_op(samples[common.LABEL],
+                                             predictions,
+                                             dataset.num_classes,
+                                             dataset.ignore_label)
+            # Initializer for initializing the conf_mat.
+            init_fn = tf.initialize_variables([conf_mat])
+            # restore from checkpoint excluding variable "conf_mat".
+            variables_to_restore = tf.global_variables()[:-1]
+        else:
+            # dummy op.
+            conf_mat_op = None
+            init_fn = None
+            variables_to_restore = tf.global_variables()
+
         num_iteration = 0
         max_num_iteration = FLAGS.max_number_of_iterations
 
@@ -264,8 +291,10 @@ def main(argv):
                 'Starting visualization at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
                                                              time.gmtime()))
             tf.logging.info('Visualizing with model %s', checkpoint_path)
-
-            scaffold = tf.train.Scaffold(init_op=tf.global_variables_initializer())
+            restorer = tf.train.Saver(variables_to_restore)
+            scaffold = tf.train.Scaffold(init_op=tf.global_variables_initializer(),
+                                         saver=restorer,
+                                         ready_for_local_init_op=init_fn)
             session_creator = tf.train.ChiefSessionCreator(
                 scaffold=scaffold,
                 master='',
@@ -277,18 +306,19 @@ def main(argv):
 
                 while not sess.should_stop():
                     tf.logging.info('Visualizing batch %d', batch + 1)
-                    _process_batch(sess=sess,
-                                   original_images=samples[common.ORIGINAL_IMAGE],
-                                   semantic_predictions=predictions,
-                                   image_names=samples[common.IMAGE_FILENAME],
-                                   image_heights=samples[common.IMAGE_HEIGHT],
-                                   image_widths=samples[common.IMAGE_WIDTH],
-                                   labels=samples[common.LABEL],
-                                   image_id_offset=image_id_offset,
-                                   save_dir=save_dir,
-                                   raw_save_dir=raw_save_dir)
+                    accumulated_conf_mat = _process_batch(sess=sess,
+                                samples=samples,
+                                predictions=predictions,
+                                image_id_offset=image_id_offset,
+                                save_dir=save_dir,
+                                conf_mat_op=conf_mat_op,
+                                conf_mat=conf_mat)
                     image_id_offset += FLAGS.batch_size
                     batch += 1
+
+
+            if FLAGS.log_confusion:
+                summary_conf_mat(accumulated_conf_mat, FLAGS.vis_logdir)
 
             tf.logging.info(
                 'Finished visualization at ' + time.strftime('%Y-%m-%d-%H:%M:%S',

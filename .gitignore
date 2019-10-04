@@ -1,2 +1,5 @@
 __pycache__/
 tfrecord/
+VOCdevkit/
+backbone_ckpt/
+logs/
