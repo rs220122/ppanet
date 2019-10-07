@@ -10,6 +10,7 @@
 # lib
 import tensorflow as tf
 import numpy as np
+import sys
 
 # user packages
 
@@ -90,3 +91,5 @@ def print_args():
         else:
             print(string_format.format(key, FLAGS[key].value))
     print('-' * 40 + '\n')
+
+    sys.stdout.flush()
