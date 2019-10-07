@@ -75,7 +75,18 @@ tf.app.flags.DEFINE_boolean('train_on_original_size',
                             'Train original size if you set the True.')
 
 def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, loss_weight=1.0):
-    """ """
+    """ Add softmax cross entropy loss to graph.
+
+    Args:
+        logits       : Logits predicted by model.
+        labels       : Labels which is correct data.
+        num_classes  : The Number of classes.
+        ignore_label : Ignore label.
+        loss_weight  : Loss weight.
+
+    Raises:
+        If logits and labels shape differ.
+    """
     if labels is None:
         raise ValueError('No label for softmax cross entropy.')
 
@@ -93,7 +104,7 @@ def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, lo
     one_hot_labels = tf.one_hot(
         labels, num_classes, on_value=1.0, off_value=0.0)
 
-    # Conpute the loss for all pixels.
+    # Conpute the loss for all pixels excluding ignore labels.
     tf.losses.softmax_cross_entropy(
         one_hot_labels,
         tf.reshape(logits, shape=[-1, num_classes]),
@@ -105,10 +116,10 @@ def log_summaries(input, labels, num_classes, logits, ignore_label):
     """ Logs the summaries for the model.
 
     Args:
-        input: Input image of the model. Its shape is [batch_size, height, width, channel].
-        label: Label of the image. Its shape is [batch_size, height, width].
-        num_classes: The number of classes of the dataset.
-        output: Output of the model. Its shape is [batch_size, height, width].
+        input       : Input image of the model. Its shape is [batch_size, height, width, channel].
+        label       : Label of the image. Its shape is [batch_size, height, width].
+        num_classes : The number of classes of the dataset.
+        logits      : Output of the model. Its shape is [batch_size, height, width].
         ignore_label: Ignore label.
     """
     # Add summaries for model variables.
@@ -159,9 +170,6 @@ def log_summaries(input, labels, num_classes, logits, ignore_label):
             tf.summary.image('train_confusion_matrix', confusion_image)
 
 
-
-
-
 def get_model_init_fn(train_logdir,
                       tf_initial_checkpoint,
                       ignore_missing_vars=False):
@@ -201,6 +209,94 @@ def get_model_init_fn(train_logdir,
         return restore_fn
 
     return None
+
+
+def resize_logits_or_labels(logits, labels):
+    """
+    Resize logits or labels.
+    If FLAGS.train_on_original_size is True, resize logits to labels' shape.
+    If FLAGS.train_on_original_size is False, resize labels to logits' shape.
+
+    Args:
+        logits : Logits.
+        labels : Labels which is correct data.
+
+    Returns:
+        Resized logits and labels.
+    """
+    _, labels_height, labels_width, _ = labels.get_shape().as_list()
+    _, logits_height, logits_width, _ = logits.get_shape().as_list()
+    if FLAGS.train_on_original_size:
+        logits = tf.image.resize_bilinear(logits, (labels_height, labels_width), align_corners=True)
+    else:
+        labels = tf.image.resize_nearest_neighbor(labels, (logits_height, logits_width), align_corner=True)
+
+    return logits, labels
+
+@tf.contrib.eager.defun
+def _print_tensor(write_content, tensor):
+    """
+    print tensor using tf.function.
+
+    Args:
+        write_content : Write content.
+        tensor        : Tensor that you want to print.
+
+    Return:
+        Tensor.
+    """
+    print_op = tf.print(write_content, tensor, output_stream=sys.stdout)
+    return tensor
+
+
+def get_total_loss(losses, global_step, scope):
+    """
+    Create total loss, print op and summary for loss.
+
+    Args:
+        losses: Losses.
+        global_step : Global step.
+
+    Return:
+        total loss graph.
+    """
+    should_log = math_ops.equal(math_ops.mod(global_step, FLAGS.log_steps), 0)
+
+    losses = tf.losses.get_losses(scope=scope)
+
+    global_step = tf.cond(should_log,
+                       lambda: _print_tensor('global_step is:', global_step),
+                       lambda: global_step)
+
+
+    print_losses = []
+    with tf.control_dependencies([global_step]):
+        for i, loss in enumerate(losses):
+            tf.summary.scalar('Losses:%s' % loss.op.name, loss)
+
+            print_losses.append(tf.cond(
+                should_log,
+                lambda: _print_tensor('%s :' % loss.op.name, loss),
+                lambda: loss))
+
+    # Create summary and print op to regularization loss.
+    regularization_loss = tf.losses.get_regularization_loss(scope=scope)
+    tf.summary.scalar('Losses/%s' % regularization_loss.op.name,
+                      regularization_loss)
+    with tf.control_dependencies(print_losses):
+        regularization_loss = tf.cond(
+            should_log,
+            lambda: _print_tensor('regularization loss :', regularization_loss),
+            lambda: regularization_loss
+        )
+
+    total_loss = tf.add_n([tf.add_n(losses), regularization_loss])
+    tf.summary.scalar('Losses/total_loss', total_loss)
+
+    with tf.control_dependencies([regularization_loss]):
+        return total_loss
+
+
 
 def main(argv):
     tf.logging.set_verbosity(tf.logging.INFO)
@@ -270,13 +366,7 @@ def main(argv):
                                            ppa_flag=FLAGS.ppa_flag)
 
                 logits = tf.identity(logits, name='dense_prediction')
-                tf.logging.info('logits.shape: {}'.format(logits.get_shape()))
-                _, labels_height, labels_width, _ = labels.get_shape().as_list()
-                _, logits_height, logits_width, _ = logits.get_shape().as_list()
-                if FLAGS.train_on_original_size:
-                    logits = tf.image.resize_bilinear(logits, (labels_height, labels_width), align_corners=True)
-                else:
-                    labels = tf.image.resize_nearest_neighbor(labels, (logits_height, logits_width), align_corner=True)
+                logits, labels = resize_logits_or_labels(logits, labels)
 
                 add_softmax_cross_entropy_loss(
                     logits,
@@ -288,29 +378,8 @@ def main(argv):
                 log_summaries(input, labels, dataset.num_classes, logits, dataset.ignore_label)
 
             # should_log
-            should_log = math_ops.equal(math_ops.mod(global_step, FLAGS.log_steps), 0)
-
             losses = tf.losses.get_losses(scope=scope)
-
-            print_losses = []
-            for loss in losses:
-                tf.summary.scalar('Losses:%s' % loss.op.name, loss)
-
-                print_losses.append(tf.cond(
-                    should_log,
-                    lambda: tf.Print(loss, [loss], 'raw loss is:'),
-                    lambda: loss))
-
-            regularization_loss = tf.losses.get_regularization_loss(scope=scope)
-            tf.summary.scalar('Losses/%s' % regularization_loss.op.name,
-                              regularization_loss)
-            regularization_loss = tf.cond(
-                should_log,
-                lambda: tf.Print(regularization_loss, [regularization_loss], 'regularization loss is:'),
-                lambda: regularization_loss)
-
-            total_loss = tf.add_n([tf.add_n(losses), regularization_loss])
-            tf.summary.scalar('Losses/total_loss', total_loss)
+            total_loss = get_total_loss(losses, global_step, scope)
 
             grads = optimizer.compute_gradients(total_loss)
 
@@ -324,17 +393,13 @@ def main(argv):
             update_op = tf.group(*update_ops)
 
             # Print total loss to the terminal.
-            # This implementation is mirrored from tf.slim.summaries.
             total_loss = tf.cond(
-                should_log,
-                lambda: tf.Print(total_loss, [total_loss], 'Total loss is:'),
+                math_ops.equal(math_ops.mod(global_step, FLAGS.log_steps), 0),
+                lambda: _print_tensor('total loss :', total_loss),
                 lambda: total_loss)
-            global_step = tf.cond(
-                should_log,
-                lambda: tf.Print(global_step, [global_step], 'global_step is:'),
-                lambda: global_step)
 
-            with tf.control_dependencies([update_op] + [global_step] + print_losses + [regularization_loss]):
+
+            with tf.control_dependencies([update_op]):
                 train_tensor = tf.identity(total_loss, name='train_op')
 
         summary_op = tf.summary.merge_all(scope='clone')
@@ -368,18 +433,6 @@ def main(argv):
         ) as sess:
             while not sess.should_stop():
                 sess.run([train_tensor])
-
-
-
-
-    # with tf.Session(graph=graph) as sess:
-    #     writer = tf.summary.FileWriter(FLAGS.logdir, sess.graph)
-    #     writer_op = tf.summary.merge_all()
-    #         # loss = _calculate_loss(logits, loss)
-    #         # train_op =
-
-
-
 
 
 if __name__ == '__main__':
