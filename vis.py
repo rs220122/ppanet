@@ -172,8 +172,8 @@ def summary_conf_mat(conf_mat, logdir):
     """
     Convert the confusion matrix created by TensorFlow session using seaborn.
     Save the heatmap to tensorboard.
-    For saving to tensorboard, create the new session. This session differ the
-    MonitoredSession.
+    For saving to tensorboard, create the new session. This session is different
+    from the MonitoredSession.
 
     Args:
         conf_mat : Confusion matrix created by session. assuming that type is numpy 2D array.
