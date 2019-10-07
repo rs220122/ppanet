@@ -13,8 +13,8 @@ import os
 
 # user packages
 from dataset import generator
-from lib.models import model
 from lib.utils import common
+from lib.models import segModel
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -60,30 +60,21 @@ def main(argv):
     with tf.Graph().as_default():
         samples = dataset.get_one_shot_iterator().get_next()
 
-        # predictions = model.predict_labels(
-        #         samples[common.IMAGE],
-        #         num_classes=dataset.num_classes,
-        #         model_variant=FLAGS.model_variant,
-        #         output_stride=FLAGS.output_stride,
-        #         backbone_atrous_rates=FLAGS.backbone_atrous_rates,
-        #         ppm_rates=FLAGS.ppm_rates,
-        #         decoder_output_stride=FLAGS.decoder_output_stride,
-        #         atrous_rates=FLAGS.atrous_rates,
-        #         )
-
-        predictions = model.predict_labels(
-                samples[common.IMAGE],
+        model = segModel.SegModel(
                 num_classes=dataset.num_classes,
                 model_variant=FLAGS.model_variant,
                 output_stride=FLAGS.output_stride,
                 backbone_atrous_rates=FLAGS.backbone_atrous_rates,
+                is_training=False,
                 ppm_rates=FLAGS.ppm_rates,
                 ppm_pooling_type=FLAGS.ppm_pooling_type,
-                decoder_output_stride=FLAGS.decoder_output_stride,
                 atrous_rates=FLAGS.atrous_rates,
                 self_attention_flag=FLAGS.self_attention_flag,
-                ppa_flag=FLAGS.ppa_flag)
+                module_order=FLAGS.module_order,
+                ppa_flag=FLAGS.ppa_flag,
+                decoder_output_stride=FLAGS.decoder_output_stride)
 
+        predictions = model.predict_labels(images=samples[common.IMAGE])
         predictions = tf.reshape(predictions, shape=[-1])
         labels = tf.reshape(samples[common.LABEL], shape=[-1])
         weights = tf.to_float(tf.not_equal(labels, dataset.ignore_label))
@@ -97,7 +88,7 @@ def main(argv):
 
         miou, update_op = tf.metrics.mean_iou(
             predictions, labels, dataset.num_classes, weights=weights)
-        tf.summary.scalar('miou', miou)
+        tf.summary.scalar('%s_miou' % FLAGS.split_name, miou)
 
         summary_op = tf.summary.merge_all()
         # それぞれのepochごとに行いたい処理

@@ -23,7 +23,7 @@ import io
 # user packages
 from lib.utils import common, colormap_utils
 from dataset import generator
-from lib.models import model
+from lib.models import segModel
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -249,19 +249,21 @@ def main(argv):
         iterator = dataset.get_one_shot_iterator()
         samples = iterator.get_next()
 
-        predictions = model.predict_labels(
-                samples[common.IMAGE],
+        model = segModel.SegModel(
                 num_classes=dataset.num_classes,
                 model_variant=FLAGS.model_variant,
                 output_stride=FLAGS.output_stride,
                 backbone_atrous_rates=FLAGS.backbone_atrous_rates,
+                is_training=False,
                 ppm_rates=FLAGS.ppm_rates,
                 ppm_pooling_type=FLAGS.ppm_pooling_type,
-                decoder_output_stride=FLAGS.decoder_output_stride,
                 atrous_rates=FLAGS.atrous_rates,
                 self_attention_flag=FLAGS.self_attention_flag,
-                ppa_flag=FLAGS.ppa_flag)
+                module_order=FLAGS.module_order,
+                ppa_flag=FLAGS.ppa_flag,
+                decoder_output_stride=FLAGS.decoder_output_stride)
 
+        predictions = model.predict_labels(images=samples[common.IMAGE])
 
         checkpoints_iterator = tf.contrib.training.checkpoints_iterator(
             FLAGS.checkpoint_dir, min_interval_secs=FLAGS.eval_interval_secs)

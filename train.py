@@ -18,8 +18,8 @@ from tensorflow.python import math_ops
 
 # user packages
 from dataset import generator
-from lib.models import model
 from lib.utils import common
+from lib.models import segModel
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -302,7 +302,7 @@ def main(argv):
     tf.logging.set_verbosity(tf.logging.INFO)
     common.print_args()
 
-    print('Training on %s %s set' % (FLAGS.split_name, FLAGS.dataset_name))
+    tf.logging.info('Training on %s %s set' % (FLAGS.split_name, FLAGS.dataset_name))
 
     graph = tf.Graph()
     crop_size = [int(val) for val in FLAGS.crop_size]
@@ -349,22 +349,23 @@ def main(argv):
                 labels = tf.identity(samples[common.LABEL], name='Semantic_Label')
 
                 is_training=True
-                logits = model.build_model(images=input,
-                                           num_classes=dataset.num_classes,
-                                           model_variant=FLAGS.model_variant,
-                                           output_stride=FLAGS.output_stride,
-                                           weight_decay=FLAGS.weight_decay,
-                                           backbone_atrous_rates=FLAGS.backbone_atrous_rates,
-                                           fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
-                                           is_training=True,
-                                           ppm_rates=FLAGS.ppm_rates,
-                                           ppm_pooling_type=FLAGS.ppm_pooling_type,
-                                           decoder_output_stride=FLAGS.decoder_output_stride,
-                                           atrous_rates=FLAGS.atrous_rates,
-                                           self_attention_flag=FLAGS.self_attention_flag,
-                                           module_order=FLAGS.module_order,
-                                           ppa_flag=FLAGS.ppa_flag)
+                model = segModel.SegModel(
+                        num_classes=dataset.num_classes,
+                        model_variant=FLAGS.model_variant,
+                        output_stride=FLAGS.output_stride,
+                        fine_tune_batch_norm=FLAGS.fine_tune_batch_norm,
+                        weight_decay=FLAGS.weight_decay,
+                        backbone_atrous_rates=FLAGS.backbone_atrous_rates,
+                        is_training=True,
+                        ppm_rates=FLAGS.ppm_rates,
+                        ppm_pooling_type=FLAGS.ppm_pooling_type,
+                        atrous_rates=FLAGS.atrous_rates,
+                        self_attention_flag=FLAGS.self_attention_flag,
+                        module_order=FLAGS.module_order,
+                        ppa_flag=FLAGS.ppa_flag,
+                        decoder_output_stride=FLAGS.decoder_output_stride)
 
+                logits = model.build(images=input)
                 logits = tf.identity(logits, name='dense_prediction')
                 logits, labels = resize_logits_or_labels(logits, labels)
 
@@ -431,9 +432,13 @@ def main(argv):
             save_summaries_secs=FLAGS.save_summaries_secs,
             save_checkpoint_secs=FLAGS.save_interval_secs
         ) as sess:
+            iter = 0
             while not sess.should_stop():
                 sess.run([train_tensor])
-
+                if iter % FLAGS.log_steps == 0:
+                    sys.stdout.write('\n')
+                    sys.stdout.flush()
+                iter += 1
 
 if __name__ == '__main__':
     tf.app.run()
