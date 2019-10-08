@@ -105,6 +105,7 @@ def _process_batch(sess, samples, predictions,
         prediction = np.squeeze(predictions[i])
         crop_prediction = prediction[:image_height, :image_width]
         image_name = np.squeeze(image_names[i])
+        crop_label = label[:image_height, :image_width]
 
         # Save image.
         image_path = os.path.join(save_dir, '{:06}_image'.format(image_id_offset+i))
@@ -124,7 +125,7 @@ def _process_batch(sess, samples, predictions,
             labels = result_list[5]
             label = np.squeeze(labels[i])
             label_path = os.path.join(save_dir, '{:06}_label'.format(image_id_offset+i))
-            colormap_utils.save_annotation(label,
+            colormap_utils.save_annotation(crop_label,
                             label_path,
                             add_colormap=True,
                             colormap_type=FLAGS.dataset_name)
@@ -186,13 +187,13 @@ def summary_conf_mat(conf_mat, logdir):
         norm_conf_mat = conf_mat / np.sum(conf_mat, axis=1, keepdims=True)
         norm_conf_mat = np.around(norm_conf_mat, decimals=2)
 
-        _, class_name = colormap_utils.create_camvid_label_colormap()
+        class_name = colormap_utils.get_class_name(FLAGS.dataset_name)
 
         conf_mat = pd.DataFrame(norm_conf_mat,
-                                index=class_name[:-1],
-                                columns=class_name[:-1])
+                                index=class_name,
+                                columns=class_name)
 
-        figure = plt.figure(figsize=(7, 7), facecolor='w', edgecolor='k')
+        figure = plt.figure(figsize=(10, 10), facecolor='w', edgecolor='k')
         ax = sns.heatmap(conf_mat, annot=True, cmap=plt.cm.Blues)
         plt.tight_layout(True)
         plt.ylabel('True label')

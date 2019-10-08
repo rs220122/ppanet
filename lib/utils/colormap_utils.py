@@ -40,7 +40,9 @@ def create_cityscapes_label_colormap():
     colormap[16] = [0, 80, 100]
     colormap[17] = [0, 0, 230]
     colormap[18] = [119, 11, 32]
-    return colormap
+
+    class_vs_colormap = None
+    return colormap, class_vs_colormap
 
 
 def create_camvid_label_colormap():
@@ -61,7 +63,32 @@ def create_camvid_label_colormap():
 
     class_vs_colormap = ['sky', 'building', 'column_pole', 'road', 'sidewalk', 'tree',
                          'sign', 'fence', 'car', 'pedestrian',
-                         'byciclist', 'void (undefined)']
+                         'byciclist']# , 'void (undefined)']
+    return colormap, class_vs_colormap
+
+
+def create_pascal_label_colormap():
+    """Creates a label colormap used in Pacaldataset."""
+    def bitget(val, bit_ind):
+        return (val & (1 << bit_ind)) != 0
+
+    colormap = np.zeros((256, 3), dtype=int)
+    ind  = np.arange(256, dtype=int)
+
+    for i in range(256):
+        r = g = b = 0
+        c = i
+        for j in range(8):
+            r = r | (bitget(c, 0) << 7 - j)
+            g = g | (bitget(c, 1) << 7 - j)
+            b = b | (bitget(c, 2) << 7 - j)
+            c >>= 3
+
+        colormap[i] = [r, g, b]
+    class_vs_colormap = ['background', 'Aeroplane', 'Bicycle', 'Bird', 'Boat',
+                         'Bottle', 'Bus', 'Car', 'Cat', 'Chair', 'Cow', 'Diningtable',
+                         'Dog', 'Horse', 'Motorbike', 'Person', 'Pottedplant',
+                         'Sheep', 'Sofa', 'Train', 'Tvmonitor']
     return colormap, class_vs_colormap
 
 
@@ -81,10 +108,30 @@ def label_to_color_image(label, colormap_type):
     if colormap_type == 'camvid':
         colormap, _ = create_camvid_label_colormap()
     elif colormap_type == 'cityscapes':
-        colormap = create_cityscapes_label_colormap()
+        colormap, _ = create_cityscapes_label_colormap()
+    elif colormap_type == 'pascal':
+        colormap, _ = create_pascal_label_colormap()
     else:
         raise ValueError('colormap_type {} is not defined.'.format(colormap_type))
     return colormap[label]
+
+def get_class_name(dataset_name):
+    """Get class name.
+
+    Args:
+        dataset_name: Dataset name.
+    Returns:
+        class name.
+    """
+    if dataset_name == 'camvid':
+        _, class_name = cerate_camvid_label_colormap()
+    elif dataset_name == 'cityscapes':
+        _, class_name = create_cityscapes_label_colormap()
+    elif dataset_name == 'pascal':
+        _, class_name = create_pascal_label_colormap()
+    else:
+        raise ValueError('dataset_name {} is not defined.'.format(dataset_name))
+    return class_name
 
 
 def save_annotation(label, save_path,
