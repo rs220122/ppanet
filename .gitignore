@@ -3,3 +3,4 @@ tfrecord/
 VOCdevkit/
 backbone_ckpt/
 logs/
+cityscapes/

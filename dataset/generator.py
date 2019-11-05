@@ -83,12 +83,12 @@ tf.app.flags.DEFINE_list('crop_size',
 
 
 _DATASETS_INFORMATION = {
-    'cityscapes': {},
+    'cityscapes': {'num_classes' :19,
+                   'ignore_label': 255},
     'camvid'    : {'num_classes': 11,
                    'ignore_label': 11},
-    'pascal': {'num_classes': 21,
+    'pascal'    : {'num_classes': 21,
                    'ignore_label': 255},
-    'kitti'     : {}
 }
 
 
@@ -264,6 +264,9 @@ class Dataset(object):
             An iterator of type tf.data.Iterator.
         """
         files = self._get_all_files()
+        if len(files) == 0:
+            raise ValueError('split type {} tfrecord file not exists in {}'.format(
+                    self.split_name, self.dataset_dir))
 
         dataset = (
             tf.data.TFRecordDataset(files, num_parallel_reads=self.num_readers)

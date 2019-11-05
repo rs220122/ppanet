@@ -75,7 +75,7 @@ tf.app.flags.DEFINE_string(
 
 tf.app.flags.DEFINE_string(
     'annotation_dir',
-    './VOCdevkit/VOC2012/SegmentationClassRaw',
+    './VOCdevkit/VOC2012/SegmentationClassAug',
     'Directory containing semantic segmentation for training and validation.')
 
 
@@ -132,6 +132,7 @@ def _convert_dataset(dataset_split):
     num_img = len(img_list)
     num_img_per_shard = math.ceil(num_img / NUM_SHARD)
 
+    print('The number of %s image: %d' %(dataset_split, num_img))
     for shard_id in range(NUM_SHARD):
         output_filename = os.path.join(
             FLAGS.output_dir,
