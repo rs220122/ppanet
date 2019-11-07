@@ -17,6 +17,7 @@ import tensorflow as tf
 import collections
 import os
 import sys
+import re
 add_path = os.path.realpath(os.path.join(__file__, os.pardir, os.pardir))
 sys.path.append(add_path)
 
@@ -33,9 +34,9 @@ tf.app.flags.DEFINE_string('dataset_dir',
                            os.path.join('dataset', 'CamVid', 'tfrecord'),
                            'tfrecord directory')
 
-tf.app.flags.DEFINE_string('split_name',
-                           'train',
-                           'dataset name')
+tf.app.flags.DEFINE_list('split_name',
+                         'train',
+                         'dataset name')
 
 tf.app.flags.DEFINE_string('dataset_name',
                            'camvid',
@@ -88,6 +89,10 @@ _DATASETS_INFORMATION = {
     'camvid'    : {'num_classes': 11,
                    'ignore_label': 11},
     'pascal'    : {'num_classes': 21,
+                   'ignore_label': 255},
+    'coco_stuff': {'num_classes': 180,
+                   'ignore_label': 255},
+    'coco_thing': {'num_classes': 20, # This dataset is pretrained for pascal.
                    'ignore_label': 255},
 }
 
@@ -264,6 +269,7 @@ class Dataset(object):
             An iterator of type tf.data.Iterator.
         """
         files = self._get_all_files()
+        tf.logging.info('tfrecord files: {}'.format(files))
         if len(files) == 0:
             raise ValueError('split type {} tfrecord file not exists in {}'.format(
                     self.split_name, self.dataset_dir))
@@ -292,7 +298,7 @@ class Dataset(object):
         Returns:
             A list of input files.
         """
-        file_pattern = '%s-*'
-        file_pattern = os.path.join(self.dataset_dir,
-                                    file_pattern % self.split_name)
-        return tf.gfile.Glob(file_pattern)
+        whole_files = os.listdir(self.dataset_dir)
+        pattern = '(%s)-' % ('|'.join(self.split_name))
+        match_files = [file for file in whole_files if re.search(pattern, file)]
+        return [os.path.join(self.dataset_dir, f) for f in match_files]

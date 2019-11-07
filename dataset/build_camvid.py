@@ -14,7 +14,7 @@ This dataset is expected to have the following directory structure:
 
     + dataset
       - build_camvid.py (current working directory).
-      - convert_data.py
+      - build_data.py
       + CamVid
         + tfrecord
         + train

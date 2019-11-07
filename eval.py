@@ -55,7 +55,7 @@ def main(argv):
                 should_shuffle=False,
                 should_repeat=False)
 
-    tf.logging.info('Evaluation on %s set on %s', FLAGS.split_name, FLAGS.dataset_name)
+    tf.logging.info('Evaluation on %s set on %s', ''.join(FLAGS.split_name), FLAGS.dataset_name)
 
     with tf.Graph().as_default():
         samples = dataset.get_one_shot_iterator().get_next()
@@ -69,9 +69,7 @@ def main(argv):
                 ppm_rates=FLAGS.ppm_rates,
                 ppm_pooling_type=FLAGS.ppm_pooling_type,
                 atrous_rates=FLAGS.atrous_rates,
-                self_attention_flag=FLAGS.self_attention_flag,
                 module_order=FLAGS.module_order,
-                ppa_flag=FLAGS.ppa_flag,
                 decoder_output_stride=FLAGS.decoder_output_stride)
 
         predictions = model.predict_labels(images=samples[common.IMAGE])
@@ -88,7 +86,7 @@ def main(argv):
 
         miou, update_op = tf.metrics.mean_iou(
             predictions, labels, dataset.num_classes, weights=weights)
-        tf.summary.scalar('%s_miou' % FLAGS.split_name, miou)
+        tf.summary.scalar('%s_miou' % ''.join(FLAGS.split_name), miou)
 
         summary_op = tf.summary.merge_all()
         # それぞれのepochごとに行いたい処理

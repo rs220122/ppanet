@@ -168,9 +168,12 @@ def _convert_dataset(dataset_split):
             sys.stdout.write('\n')
             sys.stdout.flush()
 
+
 def main(argv):
     dataset_splits = tf.gfile.Glob(os.path.join(FLAGS.list_dir, '*.txt'))
     for dataset_split in dataset_splits:
+        if 'trainval' in dataset_splits:
+            continue
         _convert_dataset(dataset_split)
 
 if __name__ == '__main__':

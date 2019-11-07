@@ -105,7 +105,6 @@ def _process_batch(sess, samples, predictions,
         prediction = np.squeeze(predictions[i])
         crop_prediction = prediction[:image_height, :image_width]
         image_name = np.squeeze(image_names[i])
-        crop_label = label[:image_height, :image_width]
 
         # Save image.
         image_path = os.path.join(save_dir, '{:06}_image'.format(image_id_offset+i))
@@ -124,6 +123,7 @@ def _process_batch(sess, samples, predictions,
             # Save label.
             labels = result_list[5]
             label = np.squeeze(labels[i])
+            crop_label = label[:image_height, :image_width]
             label_path = os.path.join(save_dir, '{:06}_label'.format(image_id_offset+i))
             colormap_utils.save_annotation(crop_label,
                             label_path,
@@ -244,7 +244,7 @@ def main(argv):
     save_dir = os.path.join(FLAGS.vis_logdir, _SEMANTIC_PREDICTION_DIR)
     tf.gfile.MakeDirs(save_dir)
 
-    tf.logging.info('Visualizing on %s set', FLAGS.split_name)
+    tf.logging.info('Visualizing on %s set', ''.join(FLAGS.split_name))
 
     with tf.Graph().as_default():
         iterator = dataset.get_one_shot_iterator()
