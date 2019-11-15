@@ -90,9 +90,9 @@ _DATASETS_INFORMATION = {
                    'ignore_label': 11},
     'pascal'    : {'num_classes': 21,
                    'ignore_label': 255},
-    'coco_stuff': {'num_classes': 180,
+    'coco_stuff': {'num_classes': 172,
                    'ignore_label': 255},
-    'coco_thing': {'num_classes': 20, # This dataset is pretrained for pascal.
+    'coco_thing': {'num_classes': 21, # This dataset is pretrained for pascal.
                    'ignore_label': 255},
 }
 

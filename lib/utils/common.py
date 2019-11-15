@@ -49,24 +49,16 @@ tf.app.flags.DEFINE_multi_integer('atrous_rates',
                                   None,
                                   'Atrous rates fro atrous spatial pyramid pooling.')
 
-tf.app.flags.DEFINE_boolean('self_attention_flag',
-                            False,
-                            'Whether add self-attention module or not.')
 
 tf.app.flags.DEFINE_list('module_order',
                          None,
-                         'モジュールの順番を指定できる.\n' +
-                         '例えば、ppmとasppの2つのモジュールをひとつ' +
-                         'のモジュールに使いたい場合、' +
-                         'どっちを最初のモジュールにするかを指定できる.' +
-                         'aspp-ppmと順番で使いたい場合は, \'aspp, ppm\'')
+                         'you can set the order the module.\n' + 
+                         'for example) if you want to use ppm and aspp,' + 
+                         'you set \'aspp, ppm\' \n'
+                         'In this case, aspp is executed and then ppm is executed.') 
 
-tf.app.flags.DEFINE_boolean('ppa_flag',
-                            False,
-                            '')
 
 # Define dataset keys.
-# このキーは、データセットを読み込むときに使われる
 # This keys are used when programs loads dataset.
 IMAGE = 'image'
 LABEL = 'label'

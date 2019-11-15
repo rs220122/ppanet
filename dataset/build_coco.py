@@ -17,12 +17,12 @@ This dataset is expected to have the following directory structure:
       + coco
         - create_gt_map_for_pascal.py <= create the thing_annotations.
         + dataset
-          + images                <= containing the COCO images.
+          + images                 <= containing the COCO images.
             + {train2017, val2017}
           + annotations            <= containing the COCO stuff and thing-only annotations.
             + stuff
             + thing
-          + json_annotations      <= containing the COCO json annotations.
+          + json_annotations       <= containing the COCO json annotations.
             + {train2017, val2017}
         - labels.txt               <= written about the COCOStuff class labels.
 
@@ -74,7 +74,7 @@ tf.app.flags.DEFINE_string('output_dir',
                            os.path.join('coco', 'tfrecord_thing'),
                            'Path to save converted SSTable of TensorFlow examples.')
 
-NUM_SHARD = 1
+NUM_SHARD = 10
 
 def _convert_dataset(dataset_split):
     """Converts the specified dataset split to TFRecord format.
@@ -122,10 +122,10 @@ def _convert_dataset(dataset_split):
                     raise ValueError('image {} dont exists'.format(img_path))
 
                 # Read the image
-                img_data = tf.gfile.FastGFile(img_path,  'rb').read()
+                img_data = tf.gfile.GFile(img_path,  'rb').read()
                 height, width = image_reader.read_image_dims(img_data)
 
-                ann_data = tf.gfile.FastGFile(ann_path, 'rb').read()
+                ann_data = tf.gfile.GFile(ann_path, 'rb').read()
                 ann_height, ann_width = label_reader.read_image_dims(ann_data)
                 if height != ann_height or width != ann_width:
                     raise RuntimeError('Shape mismatched between image and annotation.')
