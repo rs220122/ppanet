@@ -120,7 +120,14 @@ def main(argv):
                 mask = mask | coco.annToMask(ann)
             mask = mask * (j+1)
             whole_mask += mask
-
+        # occlusion appeared. and occulusion pixels set to zero.
+        whole_mask[whole_mask > 21] = 0
+        # Calculate the background rate.
+        height, width = whole_mask.shape
+        background_rate = np.sum(whole_mask == 0) / (height*width)
+        if background_rate < 0.05 or background_rate > 0.995:
+            # Theare are the almost all background or no background on image.
+            continue
         save_path = os.path.join(FLAGS.output_dir, FLAGS.data_type, img['file_name'].replace('jpg', 'png'))
         img = Image.fromarray(np.uint8(whole_mask))
         img.save(save_path, quality=95)
