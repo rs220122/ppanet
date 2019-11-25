@@ -74,7 +74,9 @@ tf.app.flags.DEFINE_boolean('train_on_original_size',
                             'Training original size or output stride size.' +
                             'Train original size if you set the True.')
 
-def add_softmax_cross_entropy_loss(logits, labels, num_classes, ignore_label, loss_weight=1.0):
+def add_softmax_cross_entropy_loss(logits, labels,
+                                   num_classes, ignore_label,
+                                   loss_weight=1.0):
     """ Add softmax cross entropy loss to graph.
 
     Args:
@@ -123,51 +125,54 @@ def log_summaries(input, labels, num_classes, logits, ignore_label):
         ignore_label: Ignore label.
     """
     # Add summaries for model variables.
-    # model variables are variables created by a slim.conv2d and so on.
-    # This variables are trained or fine-tuned during learning and are loaded
-    # from a checkpoint during evaluation or inference.
     for model_var in tf.model_variables():
         tf.summary.histogram(model_var.op.name, model_var)
 
     # Add summaries for images, labels, semantic predictions.
     if FLAGS.save_summaries_images:
-        tf.summary.image('samples/image', input)
+        max_outputs = 3
+        # Add summaries for attentin map when build the self attention.
+        if model.pam_flag:
+            max_outputs = 2
+            model.summary_attention_map(input, labels)
+        tf.summary.image('samples/image', input, max_outputs=max_outputs)
 
         pixel_scaling = max(1, 255 // num_classes)
         summary_labels = tf.cast(labels * pixel_scaling, tf.uint8)
-        tf.summary.image('samples/label', summary_labels)
+        tf.summary.image('samples/label', summary_labels, max_outputs=max_outputs)
 
         logits = tf.argmax(logits, 3)
         predictions = tf.expand_dims(logits, axis=3)
         summary_predictions = tf.cast(predictions * pixel_scaling, tf.uint8)
-        tf.summary.image('sample/logits', summary_predictions)
+        tf.summary.image('samples/logits', summary_predictions, max_outputs=max_outputs)
 
+        # TODO: Theare is the InvalidArgumentError.
         # Compute a per-batch confusion
-        zeros_like = tf.zeros_like(labels, dtype=tf.int32)
-        not_ignore_mask = tf.cast(tf.not_equal(labels, ignore_label), dtype=tf.float32)
-        not_ignore_mask = tf.not_equal(labels, ignore_label)
-        modified_labels = tf.where(not_ignore_mask, labels, zeros_like)
-
-        with tf.control_dependencies([modified_labels]):
-            batch_confusion = tf.confusion_matrix(tf.reshape(modified_labels, [-1]),
-                                                  tf.reshape(logits, [-1]),
-                                                  num_classes=num_classes,
-                                                  weights=tf.reshape(tf.cast(not_ignore_mask, tf.float32), [-1]),
-                                                  name='batch_confusion_matrix')
-
-            # Cast counts to float so tf.summary.image renomalization to [0,255]
-            # Tensorflow broadcast this value to axis=1, so that this value should be transposed.
-            sum_row_confusion = tf.math.reduce_sum(batch_confusion, axis=1)
-            # avoid zeros divide.
-            sum_row_confusion = tf.where(tf.equal(sum_row_confusion, 0), tf.ones_like(sum_row_confusion), sum_row_confusion)
-            sum_row_confusion = tf.transpose(tf.broadcast_to(sum_row_confusion, shape=batch_confusion.get_shape()))
-            batch_confusion_norm = batch_confusion / sum_row_confusion
-            diag = tf.linalg.diag(tf.ones(shape=num_classes)*0.4)
-            diag = tf.cast(diag, tf.float64)
-            confusion_image = tf.stack([batch_confusion_norm, diag, diag], axis=2)
-            confusion_image = tf.expand_dims(confusion_image, axis=0)
-
-            tf.summary.image('train_confusion_matrix', confusion_image)
+        # zeros_like = tf.zeros_like(labels, dtype=tf.int32)
+        # not_ignore_mask = tf.cast(tf.not_equal(labels, ignore_label), dtype=tf.float32)
+        # not_ignore_mask = tf.not_equal(labels, ignore_label)
+        # modified_labels = tf.where(not_ignore_mask, labels, zeros_like)
+        #
+        # with tf.control_dependencies([modified_labels]):
+        #     batch_confusion = tf.confusion_matrix(tf.reshape(modified_labels, [-1]),
+        #                                           tf.reshape(logits, [-1]),
+        #                                           num_classes=num_classes,
+        #                                           weights=tf.reshape(tf.cast(not_ignore_mask, tf.float32), [-1]),
+        #                                           name='batch_confusion_matrix')
+        #
+        #     # Cast counts to float so tf.summary.image renomalization to [0,255]
+        #     # Tensorflow broadcast this value to axis=1, so that this value should be transposed.
+        #     sum_row_confusion = tf.math.reduce_sum(batch_confusion, axis=1)
+        #     # avoid zeros divide.
+        #     sum_row_confusion = tf.where(tf.equal(sum_row_confusion, 0), tf.ones_like(sum_row_confusion), sum_row_confusion)
+        #     sum_row_confusion = tf.transpose(tf.broadcast_to(sum_row_confusion, shape=batch_confusion.get_shape()))
+        #     batch_confusion_norm = batch_confusion / sum_row_confusion
+        #     diag = tf.linalg.diag(tf.ones(shape=num_classes)*0.4)
+        #     diag = tf.cast(diag, tf.float64)
+        #     confusion_image = tf.stack([batch_confusion_norm, diag, diag], axis=2)
+        #     confusion_image = tf.expand_dims(confusion_image, axis=0)
+        #
+        #     tf.summary.image('train_confusion_matrix', confusion_image)
 
 
 def get_model_init_fn(train_logdir,
@@ -262,22 +267,19 @@ def get_total_loss(losses, global_step, scope):
     """
     should_log = math_ops.equal(math_ops.mod(global_step, FLAGS.log_steps), 0)
 
-    losses = tf.losses.get_losses(scope=scope)
-
     global_step = tf.cond(should_log,
                        lambda: _print_tensor('global_step is:', global_step),
                        lambda: global_step)
 
-
     print_losses = []
     with tf.control_dependencies([global_step]):
         for i, loss in enumerate(losses):
-            tf.summary.scalar('Losses:%s' % loss.op.name, loss)
-
+            mean_loss = loss / FLAGS.batch_size
+            tf.summary.scalar('Losses:%s' % loss.op.name, mean_loss)
             print_losses.append(tf.cond(
                 should_log,
-                lambda: _print_tensor('%s :' % loss.op.name, loss),
-                lambda: loss))
+                lambda: _print_tensor('%s :' % loss.op.name, mean_loss),
+                lambda: mean_loss))
 
     # Create summary and print op to regularization loss.
     regularization_loss = tf.losses.get_regularization_loss(scope=scope)
@@ -302,7 +304,7 @@ def main(argv):
     tf.logging.set_verbosity(tf.logging.INFO)
     common.print_args()
 
-    tf.logging.info('Training on %s %s set' % (FLAGS.split_name, FLAGS.dataset_name))
+    tf.logging.info('Training on %s %s set' % (','.join(FLAGS.split_name), FLAGS.dataset_name))
 
     graph = tf.Graph()
     crop_size = [int(val) for val in FLAGS.crop_size]
@@ -336,7 +338,6 @@ def main(argv):
                             decay_steps=FLAGS.train_steps,
                             end_learning_rate=0,
                             power=0.9)
-        tf.summary.scalar('learning_rate', learning_rate)
 
         # create optimizer
         optimizer = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
@@ -348,7 +349,7 @@ def main(argv):
                 input = tf.identity(samples[common.IMAGE], name='Input_Image')
                 labels = tf.identity(samples[common.LABEL], name='Semantic_Label')
 
-                is_training=True
+                global model
                 model = segModel.SegModel(
                         num_classes=dataset.num_classes,
                         model_variant=FLAGS.model_variant,
@@ -360,9 +361,7 @@ def main(argv):
                         ppm_rates=FLAGS.ppm_rates,
                         ppm_pooling_type=FLAGS.ppm_pooling_type,
                         atrous_rates=FLAGS.atrous_rates,
-                        self_attention_flag=FLAGS.self_attention_flag,
                         module_order=FLAGS.module_order,
-                        ppa_flag=FLAGS.ppa_flag,
                         decoder_output_stride=FLAGS.decoder_output_stride)
 
                 logits = model.build(images=input)
@@ -376,7 +375,11 @@ def main(argv):
                     dataset.ignore_label,
                     loss_weight=1.0)
 
-                log_summaries(input, labels, dataset.num_classes, logits, dataset.ignore_label)
+                log_summaries(input,
+                              labels,
+                              dataset.num_classes,
+                              logits,
+                              dataset.ignore_label)
 
             # should_log
             losses = tf.losses.get_losses(scope=scope)
@@ -399,7 +402,6 @@ def main(argv):
                 lambda: _print_tensor('total loss :', total_loss),
                 lambda: total_loss)
 
-
             with tf.control_dependencies([update_op]):
                 train_tensor = tf.identity(total_loss, name='train_op')
 
@@ -408,7 +410,6 @@ def main(argv):
         # Soft placement allows placing on CPU ops without GPU implementation.
         session_config = tf.ConfigProto(
             allow_soft_placement=True, log_device_placement=False)
-
         init_fn = None
         if FLAGS.tf_initial_checkpoint:
             init_fn = get_model_init_fn(
