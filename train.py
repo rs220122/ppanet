@@ -423,6 +423,9 @@ def main(argv):
 
         stop_hook = tf.train.StopAtStepHook(last_step=FLAGS.train_steps)
 
+        if FLAGS.save_summaries_secs <= 0:
+            FLAGS.save_summaries_secs = None
+
         with tf.train.MonitoredTrainingSession(
             checkpoint_dir=FLAGS.train_logdir,
             hooks=[stop_hook],
