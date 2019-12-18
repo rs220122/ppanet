@@ -34,9 +34,17 @@ tf.app.flags.DEFINE_integer('max_number_of_evaluations',
                             1,
                             'Maximum number of eval iterations.')
 
+tf.app.flags.DEFINE_bool('add_flipped_images',
+                         False,
+                         'Add flipped images for evaluation or not.')
+
+tf.app.flags.DEFINE_multi_float('eval_scales',
+                                [1.0],
+                                'The scales to resize images for evaluation.')
 
 def main(argv):
     tf.logging.set_verbosity(tf.logging.INFO)
+    common.print_args()
 
     dataset = generator.Dataset(
                 dataset_dir=FLAGS.dataset_dir,
@@ -72,7 +80,16 @@ def main(argv):
                 module_order=FLAGS.module_order,
                 decoder_output_stride=FLAGS.decoder_output_stride)
 
-        predictions = model.predict_labels(images=samples[common.IMAGE])
+        if FLAGS.eval_scales == [1.0]:
+            tf.logging.info('Evaluate the single scale image.')
+            predictions = model.predict_labels(images=samples[common.IMAGE],
+                                               add_flipped_images=FLAGS.add_flipped_images)
+        else:
+            tf.logging.info('Evaluate the multi-scale image.')
+            predictions = model.predict_labels_for_multiscale(
+                                    images=samples[common.IMAGE],
+                                    add_flipped_images=FLAGS.add_flipped_images,
+                                    eval_scales=FLAGS.eval_scales)
         predictions = tf.reshape(predictions, shape=[-1])
         labels = tf.reshape(samples[common.LABEL], shape=[-1])
         weights = tf.to_float(tf.not_equal(labels, dataset.ignore_label))
@@ -86,7 +103,11 @@ def main(argv):
 
         miou, update_op = tf.metrics.mean_iou(
             predictions, labels, dataset.num_classes, weights=weights)
-        tf.summary.scalar('%s_miou' % ''.join(FLAGS.split_name), miou)
+        miou_text = '{}_miou_f_{}_multiscale_{}'.format(
+                        ''.join(FLAGS.split_name),
+                        int(FLAGS.add_flipped_images),
+                        int(len(FLAGS.eval_scales) > 1))
+        tf.summary.scalar(miou_text, miou)
 
         summary_op = tf.summary.merge_all()
         # それぞれのepochごとに行いたい処理

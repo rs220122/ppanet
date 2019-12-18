@@ -97,6 +97,7 @@ class SegModel(object):
         for key, val in end_points.items():
             tf.logging.debug('{}: {}'.format(key, val.shape))
 
+        # for debug
         tf.logging.debug('backbone_feature name: {}'.format(backbone_features.name))
         tf.logging.debug('backbone_feature shape: {}'.format(backbone_features.get_shape()))
 
@@ -122,11 +123,11 @@ class SegModel(object):
                     tf.logging.info('{}-th module: {}'.format(i, module))
                     if module == 'ppm':
                         if self.ppm_rates is None:
-                            raise ValueError('ppm_rates is None. But module_order set ppm.')
+                            raise ValueError('ppm_rates is None. But you set ppm to module_order.')
                         features = self._build_ppm(features, depth=depth)
                     elif module == 'aspp':
                         if self.atrous_rates is None:
-                            raise ValueError('atrous_rates is None. But module_order set aspp.')
+                            raise ValueError('atrous_rates is None. But you set aspp to module_order.')
                         featuers = self._build_aspp(features, depth=depth)
                     elif module == 'da':
                         features = self._build_da(features)
@@ -155,7 +156,13 @@ class SegModel(object):
 
 
     def _build_ppm(self, features, depth):
-        """
+        """Build the pyramid pooling module.
+
+        Args:
+            features: features.
+            depth: depth for convolution layer.
+        Return:
+            ppm features.
         """
         features_list = [features]
         _, base_height, base_width, _ = features.get_shape().as_list()
@@ -183,11 +190,22 @@ class SegModel(object):
         return ppm_features
 
 
-    def _build_aspp(self, features, depth):
-        """
+    def _build_aspp(self, features, depth, gap=False):
+        """Build the atrous spatial pyramid pooling module.
+
+        Args:
+            features: features.
+            depth: depth for convolution layer.
+            gap: use global pooling layer. In the paper, True.
+        Return:
+            aspp features.
         """
         with tf.variable_scope('aspp', [features]):
             aspp_features_list = [features]
+            if gap:
+                _, f_h, f_w, _ = features.get_shape().as_list()
+                image_level_features = slim.max_pool2d(features, [f_h, f_w], stride=[f_h, f_w])
+                aspp_features_list.append(tf.image.resize_bilinear(image_level_features), align_corners=True)
             for i, rate in enumerate(self.atrous_rates):
                 tf.logging.info('============= atrous rate {} ==============='.format(rate))
                 if self.output_stride == 8:
@@ -250,7 +268,7 @@ class SegModel(object):
         return attention_features
 
 
-    def _build_channel_attention(self, features):
+    def _build_channel_attention(self, features1):
         """Build the channel attention module.
 
         Args:
@@ -281,7 +299,7 @@ class SegModel(object):
 
 
     def _build_da(self, features):
-        """ Build dual attention module.
+        """Build dual attention module.
 
         Args:
             features: feature map. (BHWC format)
@@ -383,12 +401,41 @@ class SegModel(object):
 
 
 
-    def predict_labels(self, images):
+    def predict_labels(self, images, add_flipped_images=False):
 
         logits = self.build(images)
+        if add_flipped_images:
+            with tf.variable_scope(tf.get_variable_scope(), reuse=True):
+                logits_reverse = self.build(tf.reverse(images, [2]))
+                logits = logits + tf.reverse(logits_reverse, [2])
 
         logits = tf.image.resize_bilinear(logits, tf.shape(images)[1:3], align_corners=True)
 
         predictions = tf.argmax(logits, 3)
 
+        return predictions
+
+
+    def predict_labels_for_multiscale(self, images, add_flipped_images=False, eval_scales=[1.0]):
+        logits_list = []
+        _, h, w, c = images.get_shape().as_list()
+
+        for i, image_scale in enumerate(eval_scales):
+            with tf.variable_scope(tf.get_variable_scope(), reuse=True if i else None):
+                scaled_shape = (tf.cast(h * image_scale, dtype=tf.int32), tf.cast(w * image_scale, dtype=tf.int32))
+
+                scaled_images = tf.image.resize_bilinear(images, scaled_shape, align_corners=True)
+
+                logits = self.build(scaled_images)
+            if add_flipped_images:
+                with tf.variable_scope(tf.get_variable_scope(), reuse=True):
+                    logits_reverse = self.build(tf.reverse(scaled_images, [2]))
+                    logits = logits + tf.reverse(logits_reverse, [2])
+
+            logits = tf.image.resize_bilinear(logits, tf.shape(images)[1:3], align_corners=True)
+            logits_list.append(logits)
+
+        logits = tf.add_n(logits_list)
+
+        predictions = tf.argmax(logits, 3)
         return predictions

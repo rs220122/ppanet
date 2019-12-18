@@ -6,7 +6,10 @@
 # Description:
 #
 # ===============================================
-
+"""
+Show the segmentation results predicted by the traned model for the dataset.
+Compared the correct labels, output the confusion matrix and IoU.
+"""
 # lib
 import tensorflow as tf
 import os
@@ -15,6 +18,7 @@ from tensorflow.python import math_ops
 import numpy as np
 import time
 import pandas as pd
+from PIL import Image
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tensorflow.python.tools import inspect_checkpoint as ckpt
@@ -53,14 +57,48 @@ tf.app.flags.DEFINE_boolean('log_confusion',
                             True,
                             'Log the Confusion matrix to tensorboard.')
 
+tf.app.flags.DEFINE_bool('add_flipped_images',
+                         False,
+                         'Add flipped images for prediction.')
+
+tf.app.flags.DEFINE_multi_float('eval_scales',
+                                [1.0],
+                                'The scales to resize images for evaluation.')
+
+
 _SEMANTIC_PREDICTION_DIR = 'semantic_prediction_result'
 
 
+def calc_miou(confusion_matrix):
+    """
+    Calculate mean IoU(intersection over union) per image.
+    """
 
+    correct_pixels = np.sum(confusion_matrix, axis=1)
+    predicted_pixels = np.sum(confusion_matrix, axis=0)
+    num_classes = confusion_matrix.shape[0]
+    iou_list = []
+    for c in range(num_classes):
+        # calculate IoU per class.
+        gt = correct_pixels[c]
+        pr = predicted_pixels[c]
+        tp = confusion_matrix[c, c]
+
+        if (pr+gt) == 0:
+            # There are no predicted pixels and gt pixels.
+            continue
+
+        iou = tp / (pr+gt - tp)
+        iou_list.append(iou)
+        tf.logging.info('\t class {} iou: {:.4f}'.format(c, iou))
+    miou = np.mean(iou_list)
+    tf.logging.info('\tmean iou: {:.4f}'.format(miou))
+
+    return miou
 
 def _process_batch(sess, samples, predictions,
                    image_id_offset, save_dir,
-                   conf_mat_op=None, conf_mat=None):
+                   conf_mat_op=None, conf_mat=None, batch_conf=None):
     """
     Do Visualizing process on batch.
 
@@ -71,7 +109,8 @@ def _process_batch(sess, samples, predictions,
         image_id_offset : Offset. This value is used when saving images and labels.
         save_dir        : Directory where images and labels are saved.
         conf_mat_op     : Confusion matrix operation.
-        conf_mat        : Confusion matrix.
+        conf_mat        : Accumulated Confusion matrix.
+        batch_conf      : Confusion matrix per batch.
 
     Return: Confusion matrix created by session, if confusion matrix is not None.
     """
@@ -88,6 +127,7 @@ def _process_batch(sess, samples, predictions,
 
     if FLAGS.log_confusion:
         run_list.append(conf_mat_op)
+        run_list.append(batch_conf)
         run_list.append(conf_mat)
 
     result_list = sess.run(run_list)
@@ -106,6 +146,10 @@ def _process_batch(sess, samples, predictions,
         crop_prediction = prediction[:image_height, :image_width]
         image_name = np.squeeze(image_names[i])
 
+        if FLAGS.log_confusion:
+            miou = calc_miou(result_list[-2])
+
+
         # Save image.
         image_path = os.path.join(save_dir, '{:06}_image'.format(image_id_offset+i))
         colormap_utils.save_annotation(original_image,
@@ -113,7 +157,7 @@ def _process_batch(sess, samples, predictions,
                         add_colormap=False)
 
         # Save prediction.
-        prediction_path = os.path.join(save_dir, '{:06}_pred'.format(image_id_offset+i))
+        prediction_path = os.path.join(save_dir, '{:06}_pred_iou={:.4f}'.format(image_id_offset+i, miou))
         colormap_utils.save_annotation(crop_prediction,
                         prediction_path,
                         add_colormap=True,
@@ -166,7 +210,7 @@ def create_conf_mat_op(labels, logits, num_classes, ignore_label):
     # Create the update op for doing an accumulation on the batch
     confusion_update = confusion.assign(confusion + batch_confusion)
 
-    return confusion_update, confusion
+    return confusion_update, confusion, batch_confusion
 
 
 def summary_conf_mat(conf_mat, logdir):
@@ -180,7 +224,8 @@ def summary_conf_mat(conf_mat, logdir):
         conf_mat : Confusion matrix created by session. assuming that type is numpy 2D array.
         logdir   : Log directory.
     """
-
+    miou = calc_miou(conf_mat)
+    tf.logging.info('Mean IoU on all images: {:.4f}'.format(miou))
     # Creating the temporary graph for saving confusion matrix heatmap.
     temp_graph = tf.Graph()
     with temp_graph.as_default():
@@ -198,11 +243,10 @@ def summary_conf_mat(conf_mat, logdir):
         plt.tight_layout(True)
         plt.ylabel('True label')
         plt.xlabel('Predicted label')
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        plt.close(figure)
-        buf.seek(0)
-        image = tf.image.decode_png(buf.getvalue(), channels=4)
+        save_path = os.path.join(logdir, 'confusion.png')
+        plt.savefig(save_path, format='png')
+        image_data = tf.gfile.GFile(save_path, 'rb').read()
+        image = tf.image.decode_png(image_data, channels=4)
         image = tf.expand_dims(image, 0)
 
         file_writer = tf.summary.FileWriter(logdir=logdir)
@@ -226,7 +270,7 @@ def main(argv):
                 dataset_dir=FLAGS.dataset_dir,
                 dataset_name=FLAGS.dataset_name,
                 split_name=FLAGS.split_name,
-                batch_size=FLAGS.batch_size,
+                batch_size=1,
                 crop_size=[int(val) for val in FLAGS.crop_size],
                 min_resize_value=FLAGS.min_resize_value,
                 max_resize_value=FLAGS.max_resize_value,
@@ -259,19 +303,26 @@ def main(argv):
                 ppm_rates=FLAGS.ppm_rates,
                 ppm_pooling_type=FLAGS.ppm_pooling_type,
                 atrous_rates=FLAGS.atrous_rates,
-                self_attention_flag=FLAGS.self_attention_flag,
                 module_order=FLAGS.module_order,
-                ppa_flag=FLAGS.ppa_flag,
                 decoder_output_stride=FLAGS.decoder_output_stride)
 
-        predictions = model.predict_labels(images=samples[common.IMAGE])
+        if FLAGS.eval_scales == [1.0]:
+            tf.logging.info('Evaluate the single scale image.')
+            predictions = model.predict_labels(images=samples[common.IMAGE],
+                                               add_flipped_images=FLAGS.add_flipped_images)
+        else:
+            tf.logging.info('Evaluate the multi-scale image.')
+            predictions = model.predict_labels_for_multiscale(
+                                    images=samples[common.IMAGE],
+                                    add_flipped_images=FLAGS.add_flipped_images,
+                                    eval_scales=FLAGS.eval_scales)
 
         checkpoints_iterator = tf.contrib.training.checkpoints_iterator(
             FLAGS.checkpoint_dir, min_interval_secs=FLAGS.eval_interval_secs)
 
         if FLAGS.log_confusion:
             # Get the confusion matrix op.
-            conf_mat_op, conf_mat = create_conf_mat_op(samples[common.LABEL],
+            conf_mat_op, conf_mat, batch_conf = create_conf_mat_op(samples[common.LABEL],
                                              predictions,
                                              dataset.num_classes,
                                              dataset.ignore_label)
@@ -281,7 +332,7 @@ def main(argv):
             variables_to_restore = tf.global_variables()[:-1]
         else:
             # dummy op.
-            conf_mat_op = None
+            conf_mat_op, conf_mat, batch_conf = None, None, None
             init_fn = None
             variables_to_restore = tf.global_variables()
 
@@ -315,9 +366,11 @@ def main(argv):
                                 image_id_offset=image_id_offset,
                                 save_dir=save_dir,
                                 conf_mat_op=conf_mat_op,
-                                conf_mat=conf_mat)
-                    image_id_offset += FLAGS.batch_size
+                                conf_mat=conf_mat,
+                                batch_conf=batch_conf)
+                    image_id_offset += 1
                     batch += 1
+
 
 
             if FLAGS.log_confusion:
