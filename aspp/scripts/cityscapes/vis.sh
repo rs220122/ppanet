@@ -7,12 +7,12 @@
 #
 # ===============================================
 
-TRAIN_LOGDIR='aspp/logs/pascal/2019-11-17_train'
+TRAIN_LOGDIR='aspp/logs/cityscapes/2020-01-09_extra'
 
 python vis.py \
        --output_stride=8 \
        --batch_size=1 \
-       --crop_size=512,512 \
+       --crop_size=1025,2049 \
        --model_variant=resnet_v1_101_beta \
        --backbone_atrous_rates=1 \
        --backbone_atrous_rates=2 \
@@ -24,13 +24,11 @@ python vis.py \
        --module_order=aspp \
        --vis_logdir=${TRAIN_LOGDIR} \
        --checkpoint_dir=${TRAIN_LOGDIR} \
-       --split_name=val \
-       --dataset_name=pascal \
-       --dataset_dir=dataset/VOCdevkit/tfrecord 
-       # --save_labels \
-       # --add_flipped_images \
-       # --eval_scales=0.5 \
-       # --eval_scales=0.75 \
-       # --eval_scales=1.0 \
-       # --eval_scales=1.25 \
-       # --eval_scales=1.5
+       --split_name=val_fine \
+       --dataset_name=cityscapes \
+       --dataset_dir=dataset/cityscapes/tfrecord \
+       --save_labels \
+       --add_flipped_images \
+       --eval_scales=0.75 \
+       --eval_scales=1.0 \
+       --eval_scales=1.25
