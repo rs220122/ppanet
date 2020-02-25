@@ -1,6 +1,14 @@
 __pycache__/
 tfrecord/
-VOCdevkit/
+dataset/VOCdevkit/VOC2012/Annotations/
+dataset/VOCdevkit/VOC2012/JPEGImages/
+dataset/VOCdevkit/VOC2012/SegmentationClass/
+dataset/VOCdevkit/VOC2012/SegmentationClassRaw/
+dataset/VOCdevkit/VOC2012/SegmentationClassAug/
+dataset/VOCdevkit/VOC2012/SegmentationObject/
+dataset/VOCdevkit/VOC2012/ImageSets/Action/
+dataset/VOCdevkit/VOC2012/ImageSets/Layout/
+dataset/VOCdevkit/VOC2012/ImageSets/Main/
 backbone_ckpt/
 logs/
 dataset/cityscapes/
