@@ -17,9 +17,11 @@ This dataset is expected to have the following directory structure:
       + cityscapes
         - cityscapesscripts (clone from github).
         - gtFine
-          - {train, val, test}
+          - {train, val, test} : test set has the dummy annotations.
         -leftImg8bit
-          - {train, val, test}
+          - {train, val, test, train_extra}
+        - gtCoarse
+          - {train, val, train_extra}
 
 This script converts data into sharded data files and save at tfrecord folder.
 
@@ -62,7 +64,13 @@ tf.app.flags.DEFINE_string('output_dir',
 
 NUM_SHARD = 1
 IMG_POSTFIX = '_leftImg8bit.png'
-ANN_POSTFIX = '_gtFine_labelTrainIds.png'
+ANN_POSTFIX_DICT = {
+    'gtFine': '_gtFine_labelTrainIds.png',
+    'gtCoarse': '_gtCoarse_labelTrainIds.png'}
+
+FILENAME_IDENTIFIER = {
+    'gtFine': 'fine',
+    'gtCoarse': 'coarse'}
 
 def _convert_dataset(dataset_split):
     """Converts the specified dataset split to TFRecord format.
@@ -82,8 +90,9 @@ def _convert_dataset(dataset_split):
     img_list = sorted(glob.glob(img_pattern))
 
     # get annotation filenames.
+    ann_postfix = ANN_POSTFIX_DICT[os.path.basename(FLAGS.annotation_dir)]
     ann_pattern = os.path.join(FLAGS.annotation_dir, dataset_split,
-                               '*', '*'+ANN_POSTFIX)
+                               '*', '*'+ann_postfix)
     ann_list = sorted(glob.glob(ann_pattern))
 
     image_reader = build_data.ImageReader(channels=3)
@@ -98,10 +107,11 @@ def _convert_dataset(dataset_split):
     num_img_per_shard = math.ceil(num_img / NUM_SHARD)
 
     print('The number of %s image: %d' %(dataset_split, num_img))
+    split_identifier = dataset_split + '_' + FILENAME_IDENTIFIER[os.path.basename(FLAGS.annotation_dir)]
     for shard_id in range(NUM_SHARD):
         output_filename = os.path.join(
             FLAGS.output_dir,
-            '%s-%05d-of%05d.tfrecord' % (dataset_split, shard_id+1, NUM_SHARD))
+            '%s-%05d-of%05d.tfrecord' % (split_identifier, shard_id+1, NUM_SHARD))
         start_idx = shard_id * num_img_per_shard
         end_idx = min((shard_id+1)*num_img_per_shard, num_img)
 
@@ -114,7 +124,7 @@ def _convert_dataset(dataset_split):
                 sys.stdout.flush()
 
                 assert (os.path.basename(img_path).replace(IMG_POSTFIX, '') ==
-                        os.path.basename(ann_path).replace(ANN_POSTFIX, ''))
+                        os.path.basename(ann_path).replace(ann_postfix, ''))
 
                 # Read the image
                 img_data = tf.gfile.FastGFile(img_path,  'rb').read()
@@ -138,8 +148,14 @@ def _convert_dataset(dataset_split):
 
 
 def main(argv):
+    if 'gtFine' in FLAGS.annotation_dir:
+        split_list = ['val', 'train', 'test']
+    elif 'gtCoarse' in FLAGS.annotation_dir:
+        split_list = ['val', 'train', 'train_extra']
+    else:
+        raise ValueError('annotation_dir must contain gtFile or gtCoarse.')
 
-    for dataset_split in ['val', 'train', 'train_extra']:
+    for dataset_split in split_list:
         _convert_dataset(dataset_split)
 
 if __name__ == '__main__':
