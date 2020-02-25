@@ -7,9 +7,9 @@
 #              This gt map has the same category as pascal voc.
 # ===============================================
 
-"""Create grandtruth map from coco.
+"""Create groundtruth map from coco.
 This gt map has only the same category as pascal voc.
-For more details, see below varialbe 'pascal_names'.
+For more details, see below variable 'pascal_names'.
 
 This file assume the following directory structure.
 
