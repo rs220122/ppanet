@@ -69,7 +69,7 @@ tf.app.flags.DEFINE_multi_float('eval_scales',
 _SEMANTIC_PREDICTION_DIR = 'semantic_prediction_result'
 
 
-def calc_miou(confusion_matrix):
+def calc_miou(confusion_matrix, write_file=None):
     """
     Calculate mean IoU(intersection over union) per image.
     """
@@ -91,9 +91,14 @@ def calc_miou(confusion_matrix):
         iou = tp / (pr+gt - tp)
         iou_list.append(iou)
         tf.logging.info('\t class {} iou: {:.4f}'.format(c, iou))
+        if write_file is not None:
+            with open(write_file, 'a') as f:
+                f.write('class {} iou: {:4f}\n'.format(c, iou))
     miou = np.mean(iou_list)
     tf.logging.info('\tmean iou: {:.4f}'.format(miou))
-
+    if write_file is not None:
+        with open(write_file, 'a') as f:
+            f.write('mean iou: {:4f}\n'.format(miou))
     return miou
 
 def _process_batch(sess, samples, predictions,
@@ -224,7 +229,7 @@ def summary_conf_mat(conf_mat, logdir):
         conf_mat : Confusion matrix created by session. assuming that type is numpy 2D array.
         logdir   : Log directory.
     """
-    miou = calc_miou(conf_mat)
+    miou = calc_miou(conf_mat, os.path.join(logdir, 'iou_summary.txt'))
     tf.logging.info('Mean IoU on all images: {:.4f}'.format(miou))
     # Creating the temporary graph for saving confusion matrix heatmap.
     temp_graph = tf.Graph()
@@ -237,19 +242,21 @@ def summary_conf_mat(conf_mat, logdir):
         conf_mat = pd.DataFrame(norm_conf_mat,
                                 index=class_name,
                                 columns=class_name)
-
+        conf_mat = conf_mat.fillna(0)
+        conf_mat = (conf_mat * 100).astype(int)
         figure = plt.figure(figsize=(10, 10), facecolor='w', edgecolor='k')
-        ax = sns.heatmap(conf_mat, annot=True, cmap=plt.cm.Blues)
+        ax = sns.heatmap(conf_mat, annot=True, fmt='2d', cmap=plt.cm.Blues, annot_kws={'fontsize':'15'})
         plt.tight_layout(True)
         plt.ylabel('True label')
         plt.xlabel('Predicted label')
+        plt.tight_layout()
         save_path = os.path.join(logdir, 'confusion.png')
         plt.savefig(save_path, format='png')
         image_data = tf.gfile.GFile(save_path, 'rb').read()
         image = tf.image.decode_png(image_data, channels=4)
         image = tf.expand_dims(image, 0)
 
-        file_writer = tf.summary.FileWriter(logdir=logdir)
+        file_writer = tf.summary.FileWriter(logdir=os.path.dirname(logdir))
 
         summary = tf.summary.image('Confusion_Matrix', image)
 
@@ -285,7 +292,10 @@ def main(argv):
 
 
     tf.gfile.MakeDirs(FLAGS.vis_logdir)
-    save_dir = os.path.join(FLAGS.vis_logdir, _SEMANTIC_PREDICTION_DIR)
+    miou_text = '_flip_{}_multiscale_{}'.format(
+                    int(FLAGS.add_flipped_images),
+                    int(len(FLAGS.eval_scales) > 1))
+    save_dir = os.path.join(FLAGS.vis_logdir, _SEMANTIC_PREDICTION_DIR + miou_text)
     tf.gfile.MakeDirs(save_dir)
 
     tf.logging.info('Visualizing on %s set', ''.join(FLAGS.split_name))
@@ -374,7 +384,7 @@ def main(argv):
 
 
             if FLAGS.log_confusion:
-                summary_conf_mat(accumulated_conf_mat, FLAGS.vis_logdir)
+                summary_conf_mat(accumulated_conf_mat, save_dir)
 
             tf.logging.info(
                 'Finished visualization at ' + time.strftime('%Y-%m-%d-%H:%M:%S',

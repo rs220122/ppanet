@@ -106,7 +106,7 @@ def add_softmax_cross_entropy_loss(logits, labels,
     one_hot_labels = tf.one_hot(
         labels, num_classes, on_value=1.0, off_value=0.0)
 
-    # Conpute the loss for all pixels excluding ignore labels.
+    # Compute the loss for all pixels excluding ignore labels.
     tf.losses.softmax_cross_entropy(
         one_hot_labels,
         tf.reshape(logits, shape=[-1, num_classes]),
