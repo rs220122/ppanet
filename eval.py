@@ -82,11 +82,11 @@ def main(argv):
 
         if FLAGS.eval_scales == [1.0]:
             tf.logging.info('Evaluate the single scale image.')
-            predictions = model.predict_labels(images=samples[common.IMAGE],
+            predictions, _ = model.predict_labels(images=samples[common.IMAGE],
                                                add_flipped_images=FLAGS.add_flipped_images)
         else:
             tf.logging.info('Evaluate the multi-scale image.')
-            predictions = model.predict_labels_for_multiscale(
+            predictions, _ = model.predict_labels_for_multiscale(
                                     images=samples[common.IMAGE],
                                     add_flipped_images=FLAGS.add_flipped_images,
                                     eval_scales=FLAGS.eval_scales)

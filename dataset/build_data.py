@@ -24,7 +24,6 @@ The Example proto contains the following fields:
 import tensorflow as tf
 import collections
 import six
-import tensorflow as tf
 
 # user packages
 
@@ -49,7 +48,7 @@ class ImageReader(object):
                                                 channels=channels)
         else:
             raise RuntimeError('This format {} is not implemented.'.format(img_format))
-        
+
     def read_image_dims(self, image_data):
         """Reads the image dimensions.
 

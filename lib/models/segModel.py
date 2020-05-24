@@ -413,7 +413,7 @@ class SegModel(object):
 
         predictions = tf.argmax(logits, 3)
 
-        return predictions
+        return predictions, tf.nn.softmax(logits)
 
 
     def predict_labels_for_multiscale(self, images, add_flipped_images=False, eval_scales=[1.0]):
@@ -438,4 +438,4 @@ class SegModel(object):
         logits = tf.add_n(logits_list)
 
         predictions = tf.argmax(logits, 3)
-        return predictions
+        return predictions, tf.nn.softmax(logits)
