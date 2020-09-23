@@ -1,5 +1,7 @@
 # PP-Attention Net: Pyramid Pooling Attention Network.
 
+<img src='images/visualize.gif' />
+
 ## Network Architecture
 
 **whole network**<br>
